@@ -30,7 +30,7 @@ export default function CategoriesScreen() {
         <View className="px-5 pt-5">
           <View className="flex-row items-center gap-4">
             <View className="flex-1">
-              <CategorySearchBar />
+              <CategorySearchBar onPress={() => router.push("/search")} />
             </View>
             <FilterIcon />
           </View>

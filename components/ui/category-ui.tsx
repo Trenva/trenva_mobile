@@ -1,16 +1,22 @@
-import { Pressable, Text, View, TextInput } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import { SearchOrangeIcon } from "./general-ui";
 
-export function CategorySearchBar({ compact = false }: { compact?: boolean }) {
+export function CategorySearchBar({
+  compact = false,
+  onPress,
+}: {
+  compact?: boolean;
+  onPress?: () => void;
+}) {
   return (
-    <View className="mb-6 flex-row items-center rounded-[14px] border border-primary bg-white px-3">
-    <SearchOrangeIcon />
-    <TextInput
-      placeholder="Search"
-      placeholderTextColor="#98A2B3"
-      className="flex-1 px-3 py-3 text-[15px] text-[#2B2B2B]"
-    />
-  </View>
+    <Pressable
+      onPress={onPress}
+      className={`${compact ? "mb-0" : "mb-6"} flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3`}
+    >
+      <SearchOrangeIcon />
+      <Text className="pl-3 text-[15px] text-[#98A2B3]">Search</Text>
+    </Pressable>
   );
 }
 
@@ -48,24 +54,6 @@ export function ChevronGrayIcon() {
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-export function SearchOrangeIcon() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z"
-        stroke="#FF9F0A"
-        strokeWidth={1.8}
-      />
-      <Path
-        d="M21 21L16.65 16.65"
-        stroke="#FF9F0A"
-        strokeWidth={1.8}
-        strokeLinecap="round"
       />
     </Svg>
   );

@@ -2,9 +2,8 @@ import { useState } from "react";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import Svg, { Circle, Path } from "react-native-svg";
 import { CartItem, PriceDetails } from "../../components/product/CartItem";
-import { BackIcon, SearchGrayIcon, BellDarkIcon, FiltersIcon  } from "../../components/ui/general-ui";
+import { BackIcon, SearchGrayIcon, BellDarkIcon } from "../../components/ui/general-ui";
 
 type CartItemType = {
   id: number;
@@ -81,7 +80,9 @@ export default function CartScreen() {
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
-              <SearchGrayIcon />
+              <Pressable onPress={() => router.push("/search")}>
+                <SearchGrayIcon />
+              </Pressable>
               <BellDarkIcon />
             </View>
           </View>
@@ -116,6 +117,7 @@ export default function CartScreen() {
 
         {/* Make Payment Button */}
         <Pressable
+          onPress={() => router.push("/address")}
           className="mx-4 mt-2 rounded-full bg-primary py-4"
           android_ripple={{ color: "#e08800" }}
         >

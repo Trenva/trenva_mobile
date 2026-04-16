@@ -73,7 +73,7 @@ export default function CategoryDetailScreen() {
             </Pressable>
 
             <View className="flex-1">
-              <CategorySearchBar compact />
+              <CategorySearchBar compact onPress={() => router.push("/search")} />
             </View>
 
             <FilterIcon />

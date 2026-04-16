@@ -103,7 +103,19 @@ function FavoriteCard({
   item: { name: string; price: string; rating: string; reviews: string; tone: string };
 }) {
   return (
-    <View className="mb-4 w-[48%] overflow-hidden rounded-[6px] bg-white shadow-sm">
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: "/product/[slug]",
+          params: {
+            slug: item.name.toLowerCase().replace(/\s+/g, "-"),
+            name: item.name,
+            price: item.price,
+          },
+        })
+      }
+      className="mb-4 w-[48%] overflow-hidden rounded-[6px] bg-white shadow-sm"
+    >
       <View className="relative h-[126px] bg-[#E6E7EB]">
         <ProductVisual tone={item.tone} />
         <FavoriteBadge />
@@ -117,13 +129,25 @@ function FavoriteCard({
           ☆ {item.rating} · {item.reviews}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 function RecommendationCard({ item }: { item: { name: string; price: string; rating: string; reviews: string } }) {
   return (
-    <View className="mr-4 w-[145px] overflow-hidden rounded-[6px] bg-white shadow-sm">
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: "/product/[slug]",
+          params: {
+            slug: item.name.toLowerCase().replace(/\s+/g, "-"),
+            name: item.name,
+            price: item.price,
+          },
+        })
+      }
+      className="mr-4 w-[145px] overflow-hidden rounded-[6px] bg-white shadow-sm"
+    >
       <View className="relative h-[112px] bg-[#E6E7EB]">
         <View className="absolute left-[26%] top-[28%] h-[46%] w-[48%] rounded-[6px] bg-[#E3E5E8]" />
         <View className="absolute right-3 top-3">
@@ -135,7 +159,7 @@ function RecommendationCard({ item }: { item: { name: string; price: string; rat
         <Text className="mt-1.5 text-[14px] font-medium text-[#222222]">{item.price}</Text>
         <Text className="mt-1 text-[9px] text-[#A7A7A7]">☆ {item.rating} · {item.reviews}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -149,7 +173,9 @@ export default function WishlistScreen() {
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
-              <SearchGrayIcon />
+              <Pressable onPress={() => router.push("/search")}>
+                <SearchGrayIcon />
+              </Pressable>
               <BellDarkIcon />
             </View>
           </View>

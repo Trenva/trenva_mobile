@@ -1,4 +1,5 @@
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { router } from "expo-router";
 import {
   BellIcon,
   ChevronRightIcon,
@@ -57,7 +58,19 @@ function PromoCard({
   compact?: boolean;
 }) {
   return (
-    <View className={`mr-3 rounded-[6px] bg-white ${compact ? "w-[124px]" : "w-[144px]"}`}>
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: "/product/[slug]",
+          params: {
+            slug: item.name.toLowerCase().replace(/\s+/g, "-"),
+            name: item.name,
+            price: item.price,
+          },
+        })
+      }
+      className={`mr-3 rounded-[6px] bg-white ${compact ? "w-[124px]" : "w-[144px]"}`}
+    >
       <View className={`relative rounded-t-[6px] bg-[#EAEAEA] ${compact ? "h-[92px]" : "h-[105px]"}`}>
         <View className="absolute right-3 top-3">
           <HeartOutlineIcon />
@@ -79,7 +92,7 @@ function PromoCard({
           </>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -129,14 +142,13 @@ export default function HomeScreen() {
             <BellIcon />
           </View>
 
-          <View className="mb-6 flex-row items-center rounded-[14px] border border-primary bg-white px-3">
+          <Pressable
+            onPress={() => router.push("/search")}
+            className="mb-6 flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3"
+          >
             <SearchIcon />
-            <TextInput
-              placeholder="Search"
-              placeholderTextColor="#98A2B3"
-              className="flex-1 px-3 py-3 text-[15px] text-[#2B2B2B]"
-            />
-          </View>
+            <Text className="pl-3 text-[15px] text-[#98A2B3]">Search</Text>
+          </Pressable>
 
           <View className="mb-8 h-[120px] rounded-[2px] bg-[#E2E2E2]" />
         </View>
