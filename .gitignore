@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules/
+files_from_trenva_web/
 
 # Expo
 .expo/
@@ -35,7 +36,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-.files_from_trenva_web/
+
 # generated native folders
 /ios
 /android
