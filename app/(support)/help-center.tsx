@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
-import { BackIcon, SearchGrayIcon } from "../components/ui/general-ui";
+import { BackIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 
 const faqs = [
   {
@@ -11,11 +11,26 @@ const faqs = [
     answer:
       "Yes, you can try us for free for 30 days. If you want, we'll provide you with a free, personalized 30-minute onboarding call to get you up and running as soon as possible.",
   },
-  { question: "Wha is Trenva about?", answer: "" },
-  { question: "What is your cancellation policy?", answer: "" },
-  { question: "Can other info be added to an invoice?", answer: "" },
-  { question: "How does billing work?", answer: "" },
-  { question: "How do I change my account email?", answer: "" },
+  {
+    question: "What is Trenva about?",
+    answer: "Trenva is a marketplace where you can discover products, place orders, track delivery, and manage wallet, coupons, and support in one app.",
+  },
+  {
+    question: "What is your cancellation policy?",
+    answer: "Cancellation eligibility depends on order status. Orders that have started fulfillment may not be cancellable.",
+  },
+  {
+    question: "Can other info be added to an invoice?",
+    answer: "Yes. Include order notes at checkout and contact support for invoice-specific requests.",
+  },
+  {
+    question: "How does billing work?",
+    answer: "Billing is completed at checkout through supported payment methods, including wallet and Paystack.",
+  },
+  {
+    question: "How do I change my account email?",
+    answer: "Go to Profile > Edit Profile and update your email, then save changes.",
+  },
 ];
 
 function WalletCardIcon() {
@@ -105,6 +120,28 @@ function MinusIcon() {
 
 export default function HelpCenterScreen() {
   const [openIndex, setOpenIndex] = useState(0);
+  const [searchText, setSearchText] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setIsLoading(false), 250);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  const normalizedQuery = searchText.trim().toLowerCase();
+
+  const filteredFaqs = useMemo(() => {
+    if (!normalizedQuery) return faqs;
+    return faqs.filter(
+      (faq) =>
+        faq.question.toLowerCase().includes(normalizedQuery) ||
+        faq.answer.toLowerCase().includes(normalizedQuery),
+    );
+  }, [normalizedQuery]);
+
+  useEffect(() => {
+    setOpenIndex(filteredFaqs.length > 0 ? 0 : -1);
+  }, [normalizedQuery, filteredFaqs.length]);
 
   return (
     <View className="flex-1 bg-[#F7F7F7]">
@@ -122,10 +159,16 @@ export default function HelpCenterScreen() {
             <Text className="text-primary">Hello,</Text> How Can We Help?
           </Text>
 
-          <Pressable className="mt-4 flex-row items-center rounded-2xl border border-[#3C3C3C] bg-white px-3 py-3">
+          <View className="mt-4 flex-row items-center rounded-2xl border border-[#3C3C3C] bg-white px-3 py-2">
             <SearchGrayIcon />
-            <Text className="pl-3 text-[16px] text-[#868686]">Search</Text>
-          </Pressable>
+            <TextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search FAQs"
+              placeholderTextColor="#868686"
+              className="ml-3 flex-1 py-1 text-[16px] text-[#2F2F2F]"
+            />
+          </View>
 
           <Text className="mt-8 text-[18px] font-semibold text-primary">Self Service</Text>
           <View className="mt-4 flex-row flex-wrap justify-between gap-y-4">
@@ -137,23 +180,36 @@ export default function HelpCenterScreen() {
 
           <View className="mb-2 mt-8 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">FAQs</Text>
-            <Text className="text-[14px] text-[#27272A] underline">View all</Text>
+            <Text className="text-[14px] text-[#27272A] underline">
+              {isLoading ? "Loading..." : `${filteredFaqs.length} result${filteredFaqs.length === 1 ? "" : "s"}`}
+            </Text>
           </View>
 
-          {faqs.map((faq, index) => {
-            const open = openIndex === index;
-            return (
-              <View key={faq.question} className="border-b border-[#B7B7B7] py-4">
-                <Pressable onPress={() => setOpenIndex(open ? -1 : index)} className="flex-row items-center justify-between">
-                  <Text className="max-w-[85%] text-[18px] font-medium text-[#1F1F1F]">{faq.question}</Text>
-                  {open ? <MinusIcon /> : <PlusIcon />}
-                </Pressable>
-                {open && faq.answer ? (
-                  <Text className="mt-3 text-[14px] leading-7 text-[#4F4F4F]">{faq.answer}</Text>
-                ) : null}
-              </View>
-            );
-          })}
+          {isLoading ? (
+            <View className="py-6">
+              <Text className="text-[15px] text-[#6A6A6A]">Loading help content...</Text>
+            </View>
+          ) : null}
+
+          {!isLoading && filteredFaqs.length === 0 ? (
+            <View className="rounded-xl border border-[#E3E3E3] bg-white p-4">
+              <Text className="text-[15px] text-[#5A5A5A]">No FAQs matched your search. Try another keyword.</Text>
+            </View>
+          ) : null}
+
+          {!isLoading &&
+            filteredFaqs.map((faq, index) => {
+              const open = openIndex === index;
+              return (
+                <View key={faq.question} className="border-b border-[#B7B7B7] py-4">
+                  <Pressable onPress={() => setOpenIndex(open ? -1 : index)} className="flex-row items-center justify-between">
+                    <Text className="max-w-[85%] text-[18px] font-medium text-[#1F1F1F]">{faq.question}</Text>
+                    {open ? <MinusIcon /> : <PlusIcon />}
+                  </Pressable>
+                  {open && faq.answer ? <Text className="mt-3 text-[14px] leading-7 text-[#4F4F4F]">{faq.answer}</Text> : null}
+                </View>
+              );
+            })}
         </View>
       </ScrollView>
     </View>

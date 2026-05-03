@@ -1,138 +1,285 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   BellIcon,
-  ChevronRightIcon,
   CouponIcon,
+  HeartFilledIcon,
   HeartOutlineIcon,
   LocationPinIcon,
   SearchIcon,
   SectionTitle,
 } from "../../components/ui/home-ui";
+import {
+  type ApiCategory,
+  type ApiFlashSaleProduct,
+  type ApiProduct,
+  type ApiSlider,
+  formatMoney,
+  getCategories,
+  getFeaturedProducts,
+  getFlashSaleProducts,
+  getFlashSales,
+  getPublishedProducts,
+  getSliders,
+  getWishlistItems,
+  getWishlistProductId,
+  resolveMediaUrl,
+  toggleWishlistByProductId,
+} from "../../lib/api/shop";
+import { useProductFilterStore } from "../../store/product-filter-store";
+import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
-const categories = [
-  { label: "Men", icon: "🧍" },
-  { label: "Women", icon: "🧍‍♀️" },
-  { label: "Kids", icon: "😊" },
-  { label: "Accessories", icon: "👜" },
-  { label: "Home Decor", icon: "🏠" },
-  { label: "Paintings", icon: "🎨" },
-];
+type ProductCardItem = {
+  productId?: number;
+  slug: string;
+  name: string;
+  categoryKey?: string;
+  price: string;
+  imageUrl?: string;
+};
 
-const flashSale = [
-  { name: "Medea By Euripides", price: "₹ 1200", rating: "4.4", reviews: "100 Reviews", stock: "6 Items Left" },
-  { name: "Botanical Art", price: "₹ 1400", rating: "4.6", reviews: "143 Reviews", stock: "16 Items Left" },
-  { name: "Twilight Glass", price: "₹ 1800", rating: "4.8", reviews: "89 Reviews", stock: "9 Items Left" },
-];
+function mapProductToCard(product: ApiProduct): ProductCardItem {
+  return {
+    productId: product.id,
+    slug: String(product.id ?? product.pid),
+    name: product.title ?? "Product",
+    categoryKey: String(product.category ?? "").toLowerCase(),
+    price: formatMoney(product.price),
+    imageUrl: resolveMediaUrl(product.image),
+  };
+}
 
-const paintings = [
-  { name: "Medea By Euripides", price: "₹ 1200", rating: "4.4", reviews: "100 Reviews" },
-  { name: "Botanical Art", price: "₹ 1400", rating: "4.6", reviews: "143 Reviews" },
-  { name: "Twilight Vase", price: "₹ 1600", rating: "4.8", reviews: "95 Reviews" },
-];
-
-const toys = [
-  { name: "Christmas Teddy Bear", price: "₹ 900", rating: "4.3", reviews: "95 Reviews" },
-  { name: "Pika Pokémon", price: "₹ 989", rating: "4.8", reviews: "123 Reviews" },
-  { name: "LEGO Wheels", price: "₹ 1499", rating: "4.7", reviews: "88 Reviews" },
-];
-
-const suggestions = [
-  { name: "RusticLeaf Pot", price: "₹ 1200", rating: "4.5", reviews: "123 Reviews" },
-  { name: "FloraCradle Pot", price: "₹ 1200", rating: "4.5", reviews: "123 Reviews" },
-  { name: "RusticLeaf Pot", price: "₹ 1200", rating: "4.5", reviews: "123 Reviews" },
-  { name: "FloraCradle Pot", price: "₹ 1200", rating: "4.5", reviews: "123 Reviews" },
-];
+function mapFlashSaleProductToCard(item: ApiFlashSaleProduct): ProductCardItem | null {
+  const details = item.product_details;
+  if (!details) return null;
+  const priceValue = item.flash_sale_price ?? item.effective_price ?? details.price ?? 0;
+  return {
+    productId: typeof details.id === "number" ? details.id : item.product,
+    slug: String(details.id ?? details.pid ?? item.product),
+    name: details.title ?? "Flash Sale Product",
+    price: formatMoney(priceValue),
+    imageUrl: resolveMediaUrl(details.image),
+  };
+}
 
 function PromoCard({
   item,
   compact = false,
+  wishlisted,
+  onToggleWishlist,
 }: {
-  item: {
-    name: string;
-    price: string;
-    rating: string;
-    reviews: string;
-    stock?: string;
-  };
+  item: ProductCardItem;
   compact?: boolean;
+  wishlisted: boolean;
+  onToggleWishlist: (item: ProductCardItem) => void;
 }) {
   return (
     <Pressable
       onPress={() =>
         router.push({
           pathname: "/product/[slug]",
-          params: {
-            slug: item.name.toLowerCase().replace(/\s+/g, "-"),
-            name: item.name,
-            price: item.price,
-          },
+          params: { slug: item.slug, name: item.name, price: item.price },
         })
       }
-      className={`mr-3 rounded-[6px] bg-white ${compact ? "w-[124px]" : "w-[144px]"}`}
+      className={`rounded-[6px] bg-white ${compact ? "mr-2 w-[140px]" : "w-[168px]"}`}
     >
-      <View className={`relative rounded-t-[6px] bg-[#EAEAEA] ${compact ? "h-[92px]" : "h-[105px]"}`}>
-        <View className="absolute right-3 top-3">
-          <HeartOutlineIcon />
-        </View>
+      <View className={`relative overflow-hidden rounded-t-[6px] bg-[#EAEAEA] ${compact ? "h-[110px]" : "h-[122px]"}`}>
+        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} className="h-full w-full" resizeMode="cover" /> : null}
+        <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)}>
+          {wishlisted ? <HeartFilledIcon /> : <HeartOutlineIcon />}
+        </Pressable>
       </View>
-
       <View className="border-x border-b border-[#EFEFEF] px-1.5 pb-2 pt-3">
         <Text numberOfLines={1} className="text-[11px] font-semibold text-[#4B4B4B]">
           {item.name}
         </Text>
         <Text className="mt-1 text-[10px] font-bold text-[#4B4B4B]">{item.price}</Text>
-        <Text className="mt-1 text-[8px] text-[#8A8A8A]">☆ {item.rating} · {item.reviews}</Text>
-        {item.stock ? (
-          <>
-            <Text className="mt-1 text-[7px] text-[#A0A0A0]">{item.stock}</Text>
-            <View className="mt-1 h-1.5 w-[66px] rounded-full bg-[#E8E8E8]">
-              <View className="h-1.5 w-7 rounded-full bg-[#FFB000]" />
-            </View>
-          </>
-        ) : null}
       </View>
     </Pressable>
   );
 }
 
-function CategoryChip({ label, icon }: { label: string; icon: string }) {
+function CategoryChip({ title, imageUrl, onPress }: { title: string; imageUrl?: string; onPress?: () => void }) {
   return (
-    <View className="mr-4 items-center">
-      <View className="h-[42px] w-[42px] items-center justify-center rounded-full bg-[#F7F1EA]">
-        <Text className="text-lg">{icon}</Text>
+    <Pressable className="mr-4 items-center" onPress={onPress}>
+      <View className="h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-full bg-[#F7F1EA]">
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" />
+        ) : (
+          <Text className="text-base font-semibold text-primary">{(title?.charAt(0) ?? "C").toUpperCase()}</Text>
+        )}
       </View>
-      <Text className="mt-1.5 text-[9px] text-[#6B7280]">{label}</Text>
-    </View>
+      <Text className="mt-1.5 max-w-[74px] text-center text-[9px] text-[#6B7280]">{title}</Text>
+    </Pressable>
   );
 }
 
 function ProductRow({
   items,
   compact = false,
+  wishlistedProductIds,
+  onToggleWishlist,
 }: {
-  items: { name: string; price: string; rating: string; reviews: string; stock?: string }[];
+  items: ProductCardItem[];
   compact?: boolean;
+  wishlistedProductIds: Set<number>;
+  onToggleWishlist: (item: ProductCardItem) => void;
 }) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="pl-4"
-      contentContainerStyle={{ paddingRight: 16 }}
-    >
-      {items.map((item, index) => (
-        <PromoCard key={`${item.name}-${index}`} item={item} compact={compact} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pl-4" contentContainerStyle={{ paddingRight: 16 }}>
+      {items.map((item) => (
+        <PromoCard
+          key={item.slug}
+          item={item}
+          compact={compact}
+          wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
+          onToggleWishlist={onToggleWishlist}
+        />
       ))}
     </ScrollView>
   );
 }
 
 export default function HomeScreen() {
+  const { width } = useWindowDimensions();
+  const heroWidth = Math.max(280, width - 32);
+  const heroScrollRef = useRef<ScrollView | null>(null);
+  const heroIndexRef = useRef(0);
+
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [sliders, setSliders] = useState<ApiSlider[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<ProductCardItem[]>([]);
+  const [saleProducts, setSaleProducts] = useState<ProductCardItem[]>([]);
+  const [allProducts, setAllProducts] = useState<ProductCardItem[]>([]);
+  const [wishlistedProductIds, setWishlistedProductIds] = useState<Set<number>>(new Set());
+
+  const resetFilters = useProductFilterStore((state) => state.resetFilters);
+  const setFilters = useProductFilterStore((state) => state.setFilters);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadHomeData() {
+      try {
+        const [categoryResult, featuredResult, saleResult, productsResult, sliderResult] = await Promise.allSettled([
+          getCategories(),
+          getFeaturedProducts(),
+          (async () => {
+            const sales = await getFlashSales({ active: true, featured: true });
+            const saleIds = sales.map((sale) => sale.id);
+            const rows = await getFlashSaleProducts({ active: true });
+            return saleIds.length ? rows.filter((row) => saleIds.includes(row.flash_sale)) : rows;
+          })(),
+          getPublishedProducts(),
+          getSliders(),
+        ]);
+
+        const categoryData = categoryResult.status === "fulfilled" ? categoryResult.value : [];
+        const featuredData = featuredResult.status === "fulfilled" ? featuredResult.value : [];
+        const saleData = saleResult.status === "fulfilled" ? saleResult.value : [];
+        const productsData = productsResult.status === "fulfilled" ? productsResult.value : [];
+        const sliderData = sliderResult.status === "fulfilled" ? sliderResult.value : [];
+
+        let wishlistIds = new Set<number>();
+        try {
+          const wishlistItems = await getWishlistItems();
+          wishlistIds = new Set(
+            wishlistItems.map((item) => getWishlistProductId(item)).filter((value): value is number => typeof value === "number"),
+          );
+        } catch {
+          wishlistIds = new Set();
+        }
+
+        if (!isMounted) return;
+
+        const mappedProducts = productsData.map(mapProductToCard);
+        const mappedFlashProducts = saleData
+          .map((row) => mapFlashSaleProductToCard(row as ApiFlashSaleProduct))
+          .filter((row): row is ProductCardItem => row !== null);
+
+        setCategories(categoryData);
+        setSliders(sliderData.filter((row) => Boolean(row.image)));
+        setFeaturedProducts((featuredData.length ? featuredData : productsData).map(mapProductToCard));
+        setSaleProducts(mappedFlashProducts);
+        setAllProducts(mappedProducts);
+        setWishlistedProductIds(wishlistIds);
+      } catch {
+        if (!isMounted) return;
+        setCategories([]);
+        setSliders([]);
+        setFeaturedProducts([]);
+        setSaleProducts([]);
+        setAllProducts([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    void loadHomeData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sliders.length <= 1) return;
+    const timer = setInterval(() => {
+      const next = (heroIndexRef.current + 1) % sliders.length;
+      heroIndexRef.current = next;
+      setHeroIndex(next);
+      heroScrollRef.current?.scrollTo({ x: next * heroWidth, animated: true });
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [heroWidth, sliders.length]);
+
+  async function handleToggleWishlist(item: ProductCardItem) {
+    if (!item.productId) {
+      notifyError("Wishlist failed", "This product cannot be wishlisted yet.");
+      return;
+    }
+    try {
+      const result = await toggleWishlistByProductId(item.productId);
+      setWishlistedProductIds((prev) => {
+        const next = new Set(prev);
+        if (result.action === "added") next.add(item.productId!);
+        else next.delete(item.productId!);
+        return next;
+      });
+      notifySuccess(result.action === "added" ? "Added to wishlist" : "Removed from wishlist", item.name);
+    } catch {
+      notifyError("Wishlist failed", "Unable to update wishlist right now.");
+    }
+  }
+
+  const suggestedRows = useMemo(() => {
+    const rows: ProductCardItem[][] = [];
+    for (let i = 0; i < allProducts.length; i += 2) rows.push(allProducts.slice(i, i + 2));
+    return rows;
+  }, [allProducts]);
+
+  const categorySections = useMemo(
+    () =>
+      categories
+        .map((category) => {
+          const normalizedTitle = category.title.toLowerCase();
+          const items = allProducts.filter((product) => {
+            const key = product.categoryKey ?? "";
+            return key === category.cid || key === normalizedTitle;
+          });
+          return { category, items };
+        })
+        .filter((entry) => entry.items.length > 0)
+        .slice(0, 4),
+    [allProducts, categories],
+  );
+
   return (
-    <View className="flex-1 bg-[#F7F7F3]">
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-        <View className="px-4 pt-3">
+    <SafeAreaView className="flex-1 bg-[#F7F7F3]" edges={["top"]}>
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false} stickyHeaderIndices={[0]}>
+        <View className="bg-[#F7F7F3] px-4 pb-3 pt-3">
           <View className="mb-4 flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
               <LocationPinIcon />
@@ -141,27 +288,76 @@ export default function HomeScreen() {
             </View>
             <BellIcon />
           </View>
-
           <Pressable
-            onPress={() => router.push("/search")}
-            className="mb-6 flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3"
+            onPress={() => {
+              resetFilters();
+              router.push("/search");
+            }}
+            className="flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3"
           >
             <SearchIcon />
             <Text className="pl-3 text-[15px] text-[#98A2B3]">Search</Text>
           </Pressable>
-
-          <View className="mb-8 h-[120px] rounded-[2px] bg-[#E2E2E2]" />
         </View>
 
-        <SectionTitle title="Category" />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="pl-4"
-          contentContainerStyle={{ paddingRight: 16 }}
-        >
-          {categories.map((category) => (
-            <CategoryChip key={category.label} {...category} />
+        <View className="px-4">
+          {sliders.length > 0 ? (
+            <View className="mb-8">
+              <ScrollView
+                ref={heroScrollRef}
+                horizontal
+                pagingEnabled
+                snapToInterval={heroWidth}
+                decelerationRate="fast"
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(event) => {
+                  const next = Math.round(event.nativeEvent.contentOffset.x / heroWidth);
+                  heroIndexRef.current = next;
+                  setHeroIndex(next);
+                }}
+              >
+                {sliders.map((slider) => (
+                  <View key={`slider-${slider.id}`} className="h-[170px] overflow-hidden rounded-[10px] bg-[#E2E2E2]" style={{ width: heroWidth }}>
+                    <Image source={{ uri: resolveMediaUrl(slider.image) }} className="h-full w-full" resizeMode="cover" />
+                  </View>
+                ))}
+              </ScrollView>
+              {sliders.length > 1 ? (
+                <View className="mt-3 flex-row items-center justify-center">
+                  {sliders.map((slider, index) => (
+                    <Pressable
+                      key={`hero-dot-${slider.id}`}
+                      onPress={() => {
+                        heroIndexRef.current = index;
+                        setHeroIndex(index);
+                        heroScrollRef.current?.scrollTo({ x: index * heroWidth, animated: true });
+                      }}
+                      className={`mx-1 rounded-full ${heroIndex === index ? "bg-primary" : "bg-[#D3D3D3]"}`}
+                      style={{ width: heroIndex === index ? 14 : 6, height: 6 }}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View className="mb-8 h-[170px] rounded-[10px] bg-[#E2E2E2]" />
+          )}
+        </View>
+
+        <SectionTitle title="Category" onPressViewAll={() => router.push("/categories")} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pl-4" contentContainerStyle={{ paddingRight: 16 }}>
+          {categories.slice(0, 10).map((category) => (
+            <CategoryChip
+              key={category.cid}
+              title={category.title}
+              imageUrl={resolveMediaUrl(category.image)}
+              onPress={() =>
+                router.push({
+                  pathname: "/category/[slug]",
+                  params: { slug: category.cid, title: category.title },
+                })
+              }
+            />
           ))}
         </ScrollView>
 
@@ -171,56 +367,83 @@ export default function HomeScreen() {
               <CouponIcon />
               <View>
                 <Text className="text-[13px] font-bold text-white">Flash Sales</Text>
-                <Text className="mt-1 text-[11px] font-medium tracking-[0.3px] text-white">
-                  TIME LEFT: 01h : 36m : 03s
-                </Text>
+                <Text className="mt-1 text-[11px] font-medium tracking-[0.3px] text-white">LIVE DEALS</Text>
               </View>
             </View>
-            <Text className="text-[12px] font-semibold text-white underline">See All</Text>
+            <Pressable
+              onPress={() => {
+                setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
+                router.push("/flash-sales");
+              }}
+            >
+              <Text className="text-[12px] font-semibold text-white underline">See All</Text>
+            </Pressable>
           </View>
         </View>
 
-        <View className="mt-5">
-          <ProductRow items={flashSale} compact />
-        </View>
-
-        <View className="mt-7 bg-primary px-4 py-5">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-[15px] font-semibold text-white">Limited Items</Text>
-            <Text className="text-[12px] font-semibold text-white">See All</Text>
+        {isLoading ? (
+          <View className="items-center py-8">
+            <ActivityIndicator color="#FF9B00" />
           </View>
-        </View>
+        ) : (
+          <>
+            <View className="mt-5">
+              <ProductRow items={(saleProducts.length ? saleProducts : allProducts).slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
+            </View>
 
-        <View className="mt-5">
-          <ProductRow items={paintings} compact />
-        </View>
+            <View className="mt-7 bg-primary px-4 py-5">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-[15px] font-semibold text-white">Featured</Text>
+                <Pressable
+                  onPress={() => {
+                    setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
+                    router.push("/featured");
+                  }}
+                >
+                  <Text className="text-[12px] font-semibold text-white">See All</Text>
+                </Pressable>
+              </View>
+            </View>
 
-        <SectionTitle title="Paintings" />
-        <ProductRow items={paintings} compact />
+            <View className="mt-5">
+              <ProductRow items={(featuredProducts.length ? featuredProducts : allProducts).slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
+            </View>
 
-        <SectionTitle title="Toys" />
-        <ProductRow items={toys} compact />
+            {categorySections.map(({ category, items }) => (
+              <View key={`home-category-section-${category.cid}`} className="pb-2">
+                <SectionTitle
+                  title={category.title}
+                  onPressViewAll={() => {
+                    setFilters({
+                      query: "",
+                      category: category.title,
+                      subcategory: "",
+                      leveltwo: "",
+                    });
+                    router.push({ pathname: "/category-products", params: { category: category.title, title: category.title } });
+                  }}
+                />
+                <ProductRow items={items.slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
+              </View>
+            ))}
 
-        <SectionTitle title="Last Viewed" />
-        <View className="px-4">
-          <View className="flex-row justify-between">
-            <PromoCard item={suggestions[0]} />
-            <PromoCard item={suggestions[1]} />
-          </View>
-        </View>
-
-        <SectionTitle title="Suggested for you" />
-        <View className="px-4 pb-10">
-          <View className="mb-4 flex-row justify-between">
-            <PromoCard item={suggestions[0]} />
-            <PromoCard item={suggestions[1]} />
-          </View>
-          <View className="flex-row justify-between">
-            <PromoCard item={suggestions[2]} />
-            <PromoCard item={suggestions[3]} />
-          </View>
-        </View>
+            {allProducts.slice(0, 20).length > 0 ? (
+              <>
+                <SectionTitle title="Suggested for you" hideViewAll />
+                <View className="px-4 pb-10">
+                  {suggestedRows.slice(0, 10).map((row, rowIndex) => (
+                    <View key={`suggested-row-${rowIndex}`} className={`${rowIndex < suggestedRows.length - 1 ? "mb-4" : ""} flex-row justify-center gap-3`}>
+                      {row.map((item) => (
+                        <PromoCard key={item.slug} item={item} wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false} onToggleWishlist={handleToggleWishlist} />
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : null}
+          </>
+        )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

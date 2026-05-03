@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
-import { BackIcon } from "../components/ui/general-ui";
+import { BackIcon } from "../../components/ui/general-ui";
 
 function EyeIcon() {
   return (

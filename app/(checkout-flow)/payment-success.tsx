@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Pressable, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 
 function SuccessIcon() {
@@ -16,17 +16,39 @@ function SuccessIcon() {
 }
 
 export default function PaymentSuccessScreen() {
+  const params = useLocalSearchParams<{
+    orderId?: string;
+    total?: string;
+    items?: string;
+  }>();
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      router.replace("/order-overview");
+      router.replace({
+        pathname: "/order-overview",
+        params: {
+          orderId: params.orderId ?? "",
+          total: params.total ?? "",
+          items: params.items ?? "",
+        },
+      });
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [params.items, params.orderId, params.total]);
 
   return (
     <Pressable
-      onPress={() => router.replace("/order-overview")}
+      onPress={() =>
+        router.replace({
+          pathname: "/order-overview",
+          params: {
+            orderId: params.orderId ?? "",
+            total: params.total ?? "",
+            items: params.items ?? "",
+          },
+        })
+      }
       className="flex-1 items-center justify-center bg-[#F7F7F7]"
     >
       <SuccessIcon />

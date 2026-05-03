@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Share, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
+import { useProductFilterStore } from "../../store/product-filter-store";
 
 type VendorProduct = {
   name: string;
@@ -74,6 +75,19 @@ export default function VendorProfileScreen() {
   const { slug, name } = useLocalSearchParams<{ slug?: string; name?: string }>();
   const vendorName = name ?? "Vendor Name";
   const vendorSlug = slug ?? "vendor-name";
+  const { query, sort, minPrice, maxPrice } = useProductFilterStore();
+
+  const filteredVendorProducts = useMemo(() => {
+    let result = vendorProducts.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
+    const toPrice = (value: string) => Number(value.replace(/[^0-9.]/g, "")) || 0;
+
+    if (typeof minPrice === "number") result = result.filter((item) => toPrice(item.price) >= minPrice);
+    if (typeof maxPrice === "number") result = result.filter((item) => toPrice(item.price) <= maxPrice);
+
+    if (sort === "price_asc") result = [...result].sort((a, b) => toPrice(a.price) - toPrice(b.price));
+    if (sort === "price_desc") result = [...result].sort((a, b) => toPrice(b.price) - toPrice(a.price));
+    return result;
+  }, [maxPrice, minPrice, query, sort]);
 
   return (
     <View className="flex-1 bg-[#F7F7F7]">
@@ -146,11 +160,14 @@ export default function VendorProfileScreen() {
               </Pressable>
             ))}
           </View>
+          <Pressable onPress={() => router.push("/filters")} className="mt-3 self-start rounded-[6px] border border-primary px-4 py-2">
+            <Text className="text-[13px] font-semibold text-primary">Open Filter</Text>
+          </Pressable>
 
           <Text className="mt-5 text-[33px] font-medium text-[#313131]">Vendor's Product</Text>
 
           <View className="mt-3 flex-row justify-between">
-            {vendorProducts.map((item) => (
+            {filteredVendorProducts.map((item) => (
               <VendorProductCard key={item.name} item={item} />
             ))}
           </View>

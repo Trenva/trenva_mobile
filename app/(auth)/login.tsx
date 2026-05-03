@@ -12,12 +12,41 @@ import {
   GoogleButton,
   PrimaryButton,
 } from "../../components/ui/auth-ui";
+import { getApiErrorMessage } from "../../lib/api/errors";
+import { login } from "../../lib/api/auth";
+import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("Loisbceket@gmail.com");
-  const [password, setPassword] = useState("*******");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleLogin() {
+    if (isSubmitting) {
+      return;
+    }
+
+    if (!email.trim() || !password.trim()) {
+      notifyError("Missing fields", "Please enter your email/username and password.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await login({
+        usernameOrEmail: email.trim(),
+        password,
+      });
+      notifySuccess("Login successful", "Welcome back.");
+      router.replace("/(tabs)");
+    } catch (error) {
+      notifyError("Login failed", getApiErrorMessage(error, "Unable to sign in right now."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <KeyboardAvoidingView
@@ -75,7 +104,7 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
-          <PrimaryButton title="Log In" onPress={() => router.push("/(tabs)")} />
+          <PrimaryButton title={isSubmitting ? "Logging in..." : "Log In"} onPress={handleLogin} />
 
           <View className="mt-[22px] flex-row items-center justify-center gap-1.5">
             <Text className="text-[15px] leading-5 text-gray-500">

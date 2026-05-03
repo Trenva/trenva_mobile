@@ -1,8 +1,11 @@
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
-import { BackIcon, BellDarkIcon } from "../components/ui/general-ui";
-import { HeartOutlineIcon, TabIcon } from "../components/ui/home-ui";
+import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
+import { HeartOutlineIcon, TabIcon } from "../../components/ui/home-ui";
+import { formatMoney, getOrders } from "../../lib/api/shop";
+import { useCheckoutStore } from "../../store/checkout-store";
 
 function SuccessBadgeIcon() {
   return (
@@ -59,6 +62,46 @@ function BottomQuickNav() {
 }
 
 export default function OrderOverviewScreen() {
+  const params = useLocalSearchParams<{ orderId?: string; total?: string; items?: string }>();
+  const lastOrderId = useCheckoutStore((state) => state.lastOrderId);
+  const [orderDate, setOrderDate] = useState<string | null>(null);
+  const activeOrderId = params.orderId || lastOrderId || "N/A";
+  const totalAmount = Number(params.total ?? 0);
+  const itemCount = Number(params.items ?? 0);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadOrderDate() {
+      try {
+        const orders = await getOrders();
+        const found = orders.find((order) => order.oid === activeOrderId);
+        if (!mounted) return;
+        if (found?.order_date) {
+          const date = new Date(found.order_date);
+          setOrderDate(Number.isNaN(date.getTime()) ? null : date.toLocaleDateString());
+        }
+      } catch {
+        if (!mounted) return;
+        setOrderDate(null);
+      }
+    }
+    if (activeOrderId && activeOrderId !== "N/A") {
+      void loadOrderDate();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [activeOrderId]);
+
+  const estDeliveryRange = useMemo(() => {
+    const base = new Date();
+    const start = new Date(base);
+    const end = new Date(base);
+    start.setDate(base.getDate() + 3);
+    end.setDate(base.getDate() + 10);
+    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+  }, []);
+
   return (
     <View className="flex-1 bg-[#F7F7F7]">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -76,17 +119,18 @@ export default function OrderOverviewScreen() {
             <View className="items-center">
               <SuccessBadgeIcon />
               <Text className="mt-3 text-[16px] font-medium text-[#333333]">Payment Has Been Confirmed</Text>
-              <Text className="mt-1 text-center text-[13px] text-[#666666]">Name, Xxxxxx, Yyyyyy, Zzzzz,{"\n"}0123456789</Text>
+              <Text className="mt-1 text-center text-[13px] text-[#666666]">Order ID: {activeOrderId}</Text>
+              {orderDate ? <Text className="mt-1 text-center text-[12px] text-[#8A8A8A]">Date: {orderDate}</Text> : null}
             </View>
 
             <View className="mt-4 flex-row justify-between">
               <View>
-                <Text className="text-[14px] text-[#444444]">Total *1</Text>
-                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">1000</Text>
+                <Text className="text-[14px] text-[#444444]">Total *{itemCount || 1}</Text>
+                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">{formatMoney(totalAmount)}</Text>
               </View>
               <View>
                 <Text className="text-[14px] text-[#444444]">Est. Delivery</Text>
-                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">14/06 - 21/06</Text>
+                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">{estDeliveryRange}</Text>
               </View>
             </View>
           </View>

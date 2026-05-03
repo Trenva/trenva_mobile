@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import Svg, { Path, Rect } from "react-native-svg";
-import { BackIcon, BellDarkIcon } from "../components/ui/general-ui";
+import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
+import { notifySuccess } from "../../lib/ui/notify";
+import { useCheckoutStore } from "../../store/checkout-store";
+import { formatMoney, getWallets } from "../../lib/api/shop";
 
 const methods = [
   { id: "paystack", label: "Paystack", type: "paystack" },
@@ -52,18 +55,26 @@ function PaymentRow({
   label,
   type,
   active,
+  disabled,
   onPress,
 }: {
   label: string;
   type: (typeof methods)[number]["type"];
   active: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} className="mb-3 flex-row items-center justify-between rounded-[12px] border border-[#BEBEBE] bg-white px-3 py-3.5">
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      className={`mb-3 flex-row items-center justify-between rounded-[12px] border px-3 py-3.5 ${
+        disabled ? "border-[#DDDDDD] bg-[#F1F1F1]" : "border-[#BEBEBE] bg-white"
+      }`}
+    >
       <View className="flex-row items-center gap-3">
         <MethodIcon type={type} />
-        <Text className="text-[15px] text-[#2F2F2F]">{label}</Text>
+        <Text className={`text-[15px] ${disabled ? "text-[#A5A5A5]" : "text-[#2F2F2F]"}`}>{label}</Text>
       </View>
       <View className={`h-6 w-6 rounded-full border-2 ${active ? "border-primary" : "border-[#C6C6C6]"}`}>
         {active ? <View className="m-[4px] h-3 w-3 rounded-full bg-primary" /> : null}
@@ -74,6 +85,44 @@ function PaymentRow({
 
 export default function PaymentsScreen() {
   const [selected, setSelected] = useState("paystack");
+  const [isLoadingWallet, setIsLoadingWallet] = useState(true);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const setSelectedPaymentMethod = useCheckoutStore((state) => state.setSelectedPaymentMethod);
+  
+  useEffect(() => {
+    let mounted = true;
+    async function loadWallet() {
+      try {
+        const wallets = await getWallets();
+        if (!mounted) return;
+        const firstWallet = wallets[0];
+        setWalletBalance(Number(firstWallet?.balance ?? 0));
+      } catch {
+        if (!mounted) return;
+        setWalletBalance(0);
+      } finally {
+        if (mounted) setIsLoadingWallet(false);
+      }
+    }
+    void loadWallet();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const backendPaymentValue = useMemo(() => {
+    if (selected === "paystack") return "paystack";
+    if (selected === "flutterwave") return "flutterwave";
+    if (selected === "wallet") return "wallet";
+    return "cash_on_delivery";
+  }, [selected]);
+  
+  function handleContinuePayment() {
+    const activeMethod = methods.find((method) => method.id === selected)?.label ?? "Payment method";
+    setSelectedPaymentMethod(backendPaymentValue);
+    notifySuccess("Payment method selected", `${activeMethod} selected.`);
+    router.push("/checkout");
+  }
 
   return (
     <View className="flex-1 bg-[#F7F7F7]">
@@ -96,24 +145,38 @@ export default function PaymentsScreen() {
         {methods.slice(0, 3).map((method) => (
           <PaymentRow
             key={method.id}
-            label={method.label}
+            label={
+              method.id === "wallet"
+                ? `${method.label} (${isLoadingWallet ? "..." : formatMoney(walletBalance)})`
+                : method.id === "flutterwave"
+                  ? `${method.label} (Coming soon)`
+                : method.label
+            }
             type={method.type}
             active={selected === method.id}
+            disabled={method.id === "flutterwave"}
             onPress={() => setSelected(method.id)}
           />
         ))}
+        {isLoadingWallet ? (
+          <View className="mb-2 mt-1 flex-row items-center">
+            <ActivityIndicator color="#FF9B00" size="small" />
+            <Text className="ml-2 text-[12px] text-[#8A8A8A]">Loading wallet...</Text>
+          </View>
+        ) : null}
 
         <Text className="mb-4 mt-5 text-[16px] font-medium text-[#353535]">Cash on Delivery</Text>
         <PaymentRow
-          label={methods[3].label}
+          label={`${methods[3].label} (Coming soon)`}
           type={methods[3].type}
           active={selected === methods[3].id}
+          disabled
           onPress={() => setSelected(methods[3].id)}
         />
       </View>
 
       <View className="mt-auto px-9 pb-8 pt-3">
-        <Pressable onPress={() => router.push("/checkout")} className="rounded-full bg-primary py-3.5">
+        <Pressable onPress={handleContinuePayment} className="rounded-full bg-primary py-3.5">
           <Text className="text-center text-[16px] font-medium text-white">Continue Payment</Text>
         </Pressable>
       </View>

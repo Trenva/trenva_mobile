@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { BackIcon } from "../components/ui/general-ui";
+import { BackIcon } from "../../components/ui/general-ui";
 
 export default function VerificationCodeScreen() {
   const [digits, setDigits] = useState(["", "", "", ""]);

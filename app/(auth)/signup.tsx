@@ -13,16 +13,78 @@ import {
   PhoneField,
   PrimaryButton,
 } from "../../components/ui/auth-ui";
+import { getApiErrorMessage } from "../../lib/api/errors";
+import { checkEmailExists, register } from "../../lib/api/auth";
+import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function SignupScreen() {
-  const [firstName, setFirstName] = useState("AK");
-  const [lastName, setLastName] = useState("Beth");
-  const [email, setEmail] = useState("AkBeth@gmail.com");
-  const [phone, setPhone] = useState("(454) 726-0592");
-  const [password, setPassword] = useState("*******");
-  const [confirmPassword, setConfirmPassword] = useState("*******");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSignup() {
+    if (isSubmitting) {
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!firstName.trim() || !lastName.trim() || !normalizedEmail || !password) {
+      notifyError("Missing fields", "Please fill all required signup fields.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      notifyError("Password mismatch", "Password and confirm password must be the same.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      notifyError("Invalid email", "Please enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 6) {
+      notifyError("Weak password", "Password must be at least 6 characters.");
+      return;
+    }
+
+    const usernameBase = `${firstName}${lastName}`.replace(/\s+/g, "").toLowerCase();
+    const usernameFromEmail = normalizedEmail.split("@")[0] ?? "user";
+    const username = (usernameBase || usernameFromEmail).slice(0, 30);
+
+    try {
+      setIsSubmitting(true);
+
+      const exists = await checkEmailExists(normalizedEmail);
+      if (exists) {
+        notifyError("Email already in use", "Please login or use another email.");
+        return;
+      }
+
+      await register({
+        username,
+        email: normalizedEmail,
+        password,
+        password_confirm: confirmPassword,
+        bio: `Hi, I'm ${firstName.trim()} ${lastName.trim()}.`,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      });
+      notifySuccess("Signup successful", "Account created successfully. Please log in.");
+      router.replace("/(auth)/login");
+    } catch (error) {
+      notifyError("Signup failed", getApiErrorMessage(error, "Unable to create your account right now."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <KeyboardAvoidingView
@@ -94,7 +156,7 @@ export default function SignupScreen() {
             }
           />
 
-          <PrimaryButton title="Sign Up" />
+          <PrimaryButton title={isSubmitting ? "Signing up..." : "Sign Up"} onPress={handleSignup} />
           <Divider text="Or" />
           <GoogleButton title="Sign up with Google" />
         </AuthCard>

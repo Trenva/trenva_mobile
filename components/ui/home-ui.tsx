@@ -39,9 +39,15 @@ export function HomeTabBar({ state, navigation }: any) {
 export function SectionTitle({
   title,
   orange = true,
+  viewAllLabel = "View All",
+  onPressViewAll,
+  hideViewAll = false,
 }: {
   title: string;
   orange?: boolean;
+  viewAllLabel?: string;
+  onPressViewAll?: () => void;
+  hideViewAll?: boolean;
 }) {
   return (
     <View className="mb-4 mt-7 flex-row items-center justify-between px-4">
@@ -52,10 +58,12 @@ export function SectionTitle({
       >
         {title}
       </Text>
-      <View className="flex-row items-center gap-1">
-        <Text className="text-xs font-medium text-[#6B7280]">View All</Text>
-        <ChevronRightIcon />
-      </View>
+      {hideViewAll ? null : (
+        <Pressable className="flex-row items-center gap-1" onPress={onPressViewAll}>
+          <Text className="text-xs font-medium text-[#6B7280]">{viewAllLabel}</Text>
+          <ChevronRightIcon />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -114,6 +122,27 @@ export function HeartOutlineIcon({
         d="M12.62 20.8116C12.28 20.9316 11.72 20.9316 11.38 20.8116C8.48 19.8216 2 15.6916 2 8.69156C2 5.60156 4.49 3.10156 7.56 3.10156C9.38 3.10156 10.99 3.98156 12 5.34156C13.01 3.98156 14.63 3.10156 16.44 3.10156C19.51 3.10156 22 5.60156 22 8.69156C22 15.6916 15.52 19.8216 12.62 20.8116Z"
         stroke={color}
         strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function HeartFilledIcon({
+  color = "#FF9F0A",
+  size = 18,
+}: {
+  color?: string;
+  size?: number;
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12.62 20.8116C12.28 20.9316 11.72 20.9316 11.38 20.8116C8.48 19.8216 2 15.6916 2 8.69156C2 5.60156 4.49 3.10156 7.56 3.10156C9.38 3.10156 10.99 3.98156 12 5.34156C13.01 3.98156 14.63 3.10156 16.44 3.10156C19.51 3.10156 22 5.60156 22 8.69156C22 15.6916 15.52 19.8216 12.62 20.8116Z"
+        fill={color}
+        stroke={color}
+        strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />

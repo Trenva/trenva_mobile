@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import {
@@ -16,6 +17,9 @@ import {
   ProfileCircleIcon,
   WalletOutlineIcon,
 } from "../../components/ui/general-ui";
+import { clearAuthTokens } from "../../lib/auth/tokens";
+import { fetchProfile } from "../../lib/api/auth";
+import { notifySuccess } from "../../lib/ui/notify";
 
 const avatar = require("../../assets/profile-pic.png");
 
@@ -40,6 +44,39 @@ function ProfileMenuRow({
 }
 
 export default function ProfileScreen() {
+  const [displayName, setDisplayName] = useState("Ak Beth");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfile() {
+      try {
+        const profile = await fetchProfile();
+        const firstName = (profile?.first_name as string | undefined)?.trim() ?? "";
+        const lastName = (profile?.last_name as string | undefined)?.trim() ?? "";
+        const fullName = `${firstName} ${lastName}`.trim();
+
+        if (isMounted && fullName) {
+          setDisplayName(fullName);
+        }
+      } catch {
+        // Keep UI stable with local fallback if profile endpoint is not ready.
+      }
+    }
+
+    void loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function handleLogout() {
+    await clearAuthTokens();
+    notifySuccess("Logged out", "You have been logged out successfully.");
+    router.replace("/(auth)/login");
+  }
+
   return (
     <View className="flex-1 bg-[#F4F4F4]">
       <View className="flex-row items-center px-3 pt-3">
@@ -53,7 +90,7 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="items-center pb-7 pt-9">
           <Image source={avatar} className="h-[76px] w-[76px] rounded-full" />
-          <Text className="mt-3 text-[17px] font-normal text-[#3A3A3A]">Ak Beth</Text>
+          <Text className="mt-3 text-[17px] font-normal text-[#3A3A3A]">{displayName}</Text>
         </View>
 
         <View className="px-4">
@@ -98,7 +135,7 @@ export default function ProfileScreen() {
             <ProfileMenuRow icon={<OrdersOutlineIcon />} label="My Orders" onPress={() => router.push("/orders")} />
             <ProfileMenuRow icon={<HeadsetOutlineIcon />} label="Customer Care" onPress={() => router.push("/customer-support")} />
             <ProfileMenuRow icon={<HelpCircleIcon />} label="Help" onPress={() => router.push("/help-center")} />
-            <ProfileMenuRow icon={<LogoutOutlineIcon />} label="Logout" />
+            <ProfileMenuRow icon={<LogoutOutlineIcon />} label="Logout" onPress={handleLogout} />
           </View>
         </View>
       </ScrollView>

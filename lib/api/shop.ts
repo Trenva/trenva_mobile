@@ -1,0 +1,757 @@
+import { apiClient } from "./client";
+import { API_BASE_URL } from "./config";
+
+type PaginatedResponse<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
+export type ApiProduct = {
+  id?: number;
+  pid: string;
+  category?: string;
+  subcategory?: string;
+  leveltwocategory?: string;
+  vendor?: string;
+  title: string;
+  image?: string | null;
+  description?: string | null;
+  price?: string | number | null;
+  old_price?: string | number | null;
+  in_stock?: boolean;
+  featured?: boolean;
+  promo?: boolean;
+  average_rating?: number | string;
+  size?: string | null;
+  p_images?: Array<{
+    id?: number;
+    images?: string | null;
+    product?: number | null;
+    date?: string;
+  }>;
+};
+
+export type ApiCategory = {
+  cid: string;
+  title: string;
+  image?: string | null;
+  product_count?: number;
+};
+
+export type ApiSlider = {
+  id: number;
+  title?: string;
+  update?: string;
+  discount_info?: string;
+  action?: string;
+  action_button?: string;
+  image?: string | null;
+  icon?: string | null;
+  date?: string;
+};
+
+export type ApiFlashSale = {
+  id: number;
+  fsid?: string;
+  title?: string;
+  description?: string | null;
+  is_active?: boolean;
+  featured?: boolean;
+  banner_image?: string | null;
+  remaining_time?: {
+    days?: number;
+    hours?: number;
+    minutes?: number;
+    seconds?: number;
+    formatted?: string;
+    expired?: boolean;
+  };
+};
+
+export type ApiFlashSaleProduct = {
+  id: number;
+  flash_sale: number;
+  product: number;
+  flash_sale_price?: string | number | null;
+  effective_price?: string | number | null;
+  product_details?: {
+    id?: number;
+    pid?: string;
+    title?: string;
+    image?: string | null;
+    price?: string | number | null;
+    old_price?: string | number | null;
+    promo?: boolean;
+    product_status?: string;
+  };
+  added_at?: string;
+};
+
+export type ApiSubCategory = {
+  scid: string;
+  title: string;
+  image?: string | null;
+  category?: number;
+  category_name?: string;
+  product_count?: number;
+};
+
+export type ApiLevelTwoCategory = {
+  l2cid: string;
+  title: string;
+  image?: string | null;
+  category?: number;
+  category_name?: string;
+  subcategory?: number;
+  subcategory_name?: string;
+  product_count?: number;
+};
+
+export type ApiCartItem = {
+  id: number;
+  product: number;
+  product_name?: string;
+  product_image?: string | null;
+  product_price?: string | number | null;
+  product_color?: string | null;
+  product_size?: string | null;
+  qty: number;
+  total_price?: string | number | null;
+};
+
+export type ApiAddress = {
+  id: number;
+  user?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  country?: string | null;
+  city?: string | null;
+  company?: string | null;
+  apartment?: string | null;
+  state?: string | null;
+  postal?: string | null;
+  status?: string | null;
+  delete?: boolean;
+};
+
+export type ApiOrder = {
+  oid: string;
+  id?: number;
+  tracking_id?: string | null;
+  user?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  address?: string | null;
+  apartment_floor?: string | null;
+  town?: string | null;
+  postal?: string | null;
+  phone_number?: string | null;
+  email_address?: string | null;
+  order_note?: string | null;
+  payment_method?: string | null;
+  price?: string | number | null;
+  paid_status?: boolean;
+  order_date?: string | null;
+  product_status?: string | null;
+  delivery_method?: string | null;
+  coupon_used?: boolean;
+  session_token?: string | null;
+  items?: Array<{
+    id?: number;
+    item?: string;
+    product_name?: string;
+    image?: string | null;
+    qty?: number;
+    product_color?: string | null;
+    product_size?: string | null;
+    price?: string | number | null;
+    total?: string | number | null;
+    product_status?: string | null;
+    order_date?: string | null;
+  }>;
+};
+
+export type ApiWallet = {
+  id: number;
+  user?: number;
+  balance?: string | number | null;
+  user_email?: string;
+  user_name?: string;
+};
+
+export type ApiTransaction = {
+  id: number;
+  wallet?: number;
+  amount?: string | number | null;
+  balance_after?: string | number | null;
+  transaction_type?: "credit" | "debit" | string;
+  status?: string;
+  reference?: string;
+  description?: string;
+  created_at?: string;
+  formatted_date?: string;
+};
+
+type MobilePaystackInitPayload = {
+  addressId: number;
+  deliveryMethod?: string;
+  orderNote?: string;
+  callbackUrl?: string;
+  couponCode?: string;
+  couponId?: number;
+};
+
+type MobilePaystackInitResponse = {
+  success: boolean;
+  authorization_url?: string;
+  reference?: string;
+  amount?: string;
+  error?: string;
+};
+
+type MobilePaystackVerifyResponse = {
+  success: boolean;
+  order_id?: number;
+  oid?: string;
+  message?: string;
+  error?: string;
+};
+
+type MobileWalletCheckoutPayload = {
+  addressId: number;
+  deliveryMethod?: string;
+  orderNote?: string;
+  couponCode?: string;
+  couponId?: number;
+};
+
+type MobileWalletCheckoutResponse = {
+  success: boolean;
+  order_id?: number;
+  oid?: string;
+  wallet_balance?: string;
+  message?: string;
+  error?: string;
+};
+
+type CouponValidateResponse = {
+  valid: boolean;
+  message?: string;
+  coupon?: {
+    id: number;
+    coupon_code: string;
+    discount: string | number;
+    discount_type?: string;
+    minimum_order?: string | number | null;
+    products?: Array<{
+      id?: number;
+      pid?: string;
+      title?: string;
+    }>;
+    used_by?: string[];
+  };
+};
+
+export type ApiCoupon = {
+  id: number;
+  coupon_code: string;
+  discount?: string | number;
+  discount_type?: "percentage" | "fixed" | string;
+  minimum_order?: string | number | null;
+  active?: boolean;
+  usage_limit?: number | null;
+  usage_count?: number;
+  expiry_date?: string | null;
+  used_by?: string[];
+};
+
+export type ApiWishlistItem = {
+  id: number;
+  product: number;
+  product_details?: {
+    id?: number;
+    pid?: string;
+    title?: string;
+    image?: string | null;
+    price?: string | number | null;
+    old_price?: string | number | null;
+  };
+};
+
+export type ApiProductImage = {
+  id: number;
+  images?: string | null;
+  product?: number | null;
+  date?: string;
+};
+
+export type ApiVendor = {
+  vid: string;
+  name: string;
+  image?: string | null;
+  verified?: boolean;
+  total_products?: number;
+  total_orders?: number;
+  total_revenue?: string | number | null;
+};
+
+export type ApiProductReview = {
+  id: number;
+  user?: number;
+  user_name?: string;
+  user_email?: string;
+  product?: number;
+  product_name?: string;
+  review?: string;
+  rating?: number;
+  formatted_date?: string;
+};
+
+export function getWishlistProductId(item: ApiWishlistItem) {
+  const nestedId = item.product_details?.id;
+  if (typeof nestedId === "number") return nestedId;
+  return item.product;
+}
+
+function unwrapResults<T>(payload: T[] | PaginatedResponse<T>): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  return payload.results ?? [];
+}
+
+async function fetchAllPages<T>(
+  path: string,
+  params?: Record<string, string | number | boolean>,
+) {
+  const all: T[] = [];
+  let nextUrl: string | null = path;
+  let nextParams: Record<string, string | number | boolean> | undefined = params;
+
+  while (nextUrl) {
+    const response: { data: PaginatedResponse<T> | T[] } = await apiClient.get<PaginatedResponse<T> | T[]>(nextUrl, {
+      params: nextParams,
+    });
+    const payload: PaginatedResponse<T> | T[] = response.data;
+
+    if (Array.isArray(payload)) {
+      all.push(...payload);
+      break;
+    }
+
+    all.push(...(payload.results ?? []));
+    nextUrl = payload.next;
+    nextParams = undefined;
+  }
+
+  return all;
+}
+
+function getApiOrigin() {
+  try {
+    return new URL(API_BASE_URL).origin;
+  } catch {
+    return API_BASE_URL;
+  }
+}
+
+export function resolveMediaUrl(path?: string | null) {
+  if (!path) return undefined;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const origin = getApiOrigin();
+  if (path.startsWith("/")) return `${origin}${path}`;
+  return `${origin}/${path}`;
+}
+
+export function formatMoney(value?: string | number | null) {
+  const amount = Number(value ?? 0);
+  if (Number.isNaN(amount)) return "₦0";
+  return `₦ ${amount.toLocaleString()}`;
+}
+
+export async function getPublishedProducts() {
+  return fetchAllPages<ApiProduct>("/api/products/", { product_status: "published" });
+}
+
+export async function getFeaturedProducts() {
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(
+    "/api/products/featured/",
+  );
+  return unwrapResults(response.data);
+}
+
+export async function getSaleProducts() {
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(
+    "/api/products/on_sale/",
+  );
+  return unwrapResults(response.data);
+}
+
+export async function getSliders() {
+  return fetchAllPages<ApiSlider>("/api/sliders/");
+}
+
+export async function getFlashSales(params?: {
+  active?: boolean;
+  featured?: boolean;
+}) {
+  const query: Record<string, string> = {};
+  if (typeof params?.active === "boolean") query.is_active = String(params.active);
+  if (typeof params?.featured === "boolean") query.featured = String(params.featured);
+  return fetchAllPages<ApiFlashSale>("/api/flash-sales/", query);
+}
+
+export async function getFlashSaleProducts(params?: {
+  active?: boolean;
+  flashSaleId?: number;
+}) {
+  const query: Record<string, string | number> = {};
+  if (typeof params?.active === "boolean") query.active = String(params.active);
+  if (typeof params?.flashSaleId === "number") query.flash_sale = params.flashSaleId;
+  return fetchAllPages<ApiFlashSaleProduct>("/api/flash-sale-products/", query);
+}
+
+export async function getHeuristicFlashSaleProducts() {
+  const products = await getPublishedProducts();
+  const now = Date.now();
+
+  const filtered = products.filter((product) => {
+    const hasPromo = Boolean(product.promo);
+    const hasCountdownValues =
+      Number((product as { days?: number }).days ?? 0) > 0 ||
+      Number((product as { hours?: number }).hours ?? 0) > 0 ||
+      Number((product as { minutes?: number }).minutes ?? 0) > 0 ||
+      Number((product as { seconds?: number }).seconds ?? 0) > 0;
+
+    const countdownStart = (product as { countdown_start?: string | null }).countdown_start;
+    const hasActiveCountdown = Boolean(countdownStart) && new Date(String(countdownStart)).getTime() <= now;
+
+    return hasPromo || hasCountdownValues || hasActiveCountdown;
+  });
+
+  if (filtered.length > 0) return filtered;
+  return getSaleProducts();
+}
+
+export async function getProductById(id: string | number) {
+  const response = await apiClient.get<ApiProduct>(`/api/products/${id}/`);
+  return response.data;
+}
+
+export async function getProductBySlug(slug: string) {
+  const asNumber = Number(slug);
+  if (!Number.isNaN(asNumber) && Number.isInteger(asNumber) && asNumber > 0) {
+    return getProductById(asNumber);
+  }
+
+  const products = await getPublishedProducts();
+  const matched = products.find((product) => product.pid === slug);
+  if (!matched?.id) {
+    throw new Error("Product not found");
+  }
+
+  return getProductById(matched.id);
+}
+
+export async function getProductImagesByPid(pid: string) {
+  const response = await apiClient.get<PaginatedResponse<ApiProductImage> | ApiProductImage[]>(
+    `/api/products/${pid}/images/`,
+  );
+  return unwrapResults(response.data);
+}
+
+export async function getVendors() {
+  return fetchAllPages<ApiVendor>("/api/vendors/");
+}
+
+export async function getProductReviews(productId: number) {
+  return fetchAllPages<ApiProductReview>("/api/reviews/", { product: productId });
+}
+
+export async function getCategories() {
+  return fetchAllPages<ApiCategory>("/api/categories/");
+}
+
+export async function getSubcategories() {
+  return fetchAllPages<ApiSubCategory>("/api/subcategories/");
+}
+
+export async function getLevelTwoCategories() {
+  return fetchAllPages<ApiLevelTwoCategory>("/api/leveltwo-categories/");
+}
+
+export async function getCartItems() {
+  const response = await apiClient.get<ApiCartItem[]>("/api/cart/");
+  return response.data;
+}
+
+export async function getCartTotal() {
+  const response = await apiClient.get<{ total_items: number; total_price: number }>("/api/cart/total/");
+  return response.data;
+}
+
+export async function updateCartItemQty(id: number, qty: number) {
+  const response = await apiClient.patch<ApiCartItem>(`/api/cart/${id}/`, { qty });
+  return response.data;
+}
+
+export async function addCartItem(params: {
+  productId: number;
+  qty?: number;
+  productColor?: string;
+  productSize?: string;
+}) {
+  const response = await apiClient.post<ApiCartItem>("/api/cart/", {
+    product: params.productId,
+    qty: params.qty ?? 1,
+    product_color: params.productColor ?? "Default",
+    product_size: params.productSize ?? "Default",
+  });
+  return response.data;
+}
+
+export async function addOrIncrementCartItem(productId: number) {
+  const items = await getCartItems();
+  const existing = items.find((item) => item.product === productId);
+
+  if (existing) {
+    return updateCartItemQty(existing.id, (existing.qty ?? 1) + 1);
+  }
+
+  return addCartItem({ productId, qty: 1 });
+}
+
+export async function addOrIncrementCartItemWithOptions(params: {
+  productId: number;
+  qty?: number;
+  productColor?: string;
+  productSize?: string;
+}) {
+  const quantity = Math.max(1, Number(params.qty ?? 1));
+  const targetColor = params.productColor ?? "Default";
+  const targetSize = params.productSize ?? "Default";
+
+  const items = await getCartItems();
+  const existing = items.find(
+    (item) =>
+      item.product === params.productId &&
+      (item.product_color ?? "Default") === targetColor &&
+      (item.product_size ?? "Default") === targetSize,
+  );
+
+  if (existing) {
+    return updateCartItemQty(existing.id, (existing.qty ?? 1) + quantity);
+  }
+
+  return addCartItem({
+    productId: params.productId,
+    qty: quantity,
+    productColor: targetColor,
+    productSize: targetSize,
+  });
+}
+
+export async function removeCartItem(id: number) {
+  await apiClient.delete(`/api/cart/${id}/`);
+}
+
+export async function getWishlistItems() {
+  const response = await apiClient.get<ApiWishlistItem[]>("/api/wishlist/");
+  return response.data;
+}
+
+export async function getAddresses() {
+  return fetchAllPages<ApiAddress>("/api/addresses/");
+}
+
+export async function createAddress(payload: Partial<ApiAddress>) {
+  const response = await apiClient.post<ApiAddress>("/api/addresses/", payload);
+  return response.data;
+}
+
+export async function setDefaultAddress(addressId: number) {
+  const response = await apiClient.post<{ success?: boolean; message?: string }>(
+    `/api/addresses/${addressId}/set_default/`,
+  );
+  return response.data;
+}
+
+export async function getOrders() {
+  return fetchAllPages<ApiOrder>("/api/orders/");
+}
+
+export async function getOrderByOid(oid: string) {
+  const response = await apiClient.get<PaginatedResponse<ApiOrder> | ApiOrder[]>("/api/orders/", {
+    params: { search: oid },
+  });
+  const rows = unwrapResults(response.data);
+  return rows.find((row) => row.oid === oid) ?? rows[0] ?? null;
+}
+
+type CreateOrderPayload = {
+  userId?: number;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  address?: string;
+  apartmentFloor?: string;
+  cityOrTown?: string;
+  state?: string;
+  postal?: string;
+  phoneNumber?: string;
+  emailAddress?: string;
+  paymentMethod?: string;
+  amount?: number;
+  paidStatus?: boolean;
+};
+
+export async function createOrder(payload: CreateOrderPayload) {
+  const response = await apiClient.post<ApiOrder>("/api/orders/", {
+    user: payload.userId,
+    first_name: payload.firstName ?? "",
+    last_name: payload.lastName ?? "",
+    company_name: payload.companyName ?? "",
+    address: payload.address ?? "",
+    apartment_floor: payload.apartmentFloor ?? "",
+    town: payload.cityOrTown ?? "",
+    city: payload.cityOrTown ?? "",
+    state: payload.state ?? "",
+    postal: payload.postal ?? "",
+    phone_number: payload.phoneNumber ?? "",
+    email_address: payload.emailAddress ?? "",
+    payment_method: payload.paymentMethod ?? "card",
+    price: Number(payload.amount ?? 0),
+    paid_status: payload.paidStatus ?? true,
+    product_status: "Placed",
+  });
+  return response.data;
+}
+
+export async function clearCart() {
+  const response = await apiClient.post<{ success?: boolean; message?: string }>("/api/cart/clear/");
+  return response.data;
+}
+
+export async function getWallets() {
+  return fetchAllPages<ApiWallet>("/api/wallets/");
+}
+
+export async function getTransactions(params?: {
+  transactionType?: "credit" | "debit";
+  status?: string;
+}) {
+  const query: Record<string, string> = {};
+  if (params?.transactionType) query.transaction_type = params.transactionType;
+  if (params?.status) query.status = params.status;
+  return fetchAllPages<ApiTransaction>("/api/transactions/", query);
+}
+
+export async function createContactForm(payload: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) {
+  const response = await apiClient.post<{
+    id: number;
+    name: string;
+    email: string;
+    subject: string;
+    message: string;
+  }>("/api/contact-forms/", payload);
+  return response.data;
+}
+
+export async function mobilePaystackInit(payload: MobilePaystackInitPayload) {
+  const response = await apiClient.post<MobilePaystackInitResponse>("/api/payments/paystack/init/", {
+    address_id: payload.addressId,
+    delivery_method: payload.deliveryMethod ?? "Door Step Delivery",
+    order_note: payload.orderNote ?? "Null",
+    callback_url: payload.callbackUrl,
+    coupon_code: payload.couponCode?.trim() || "",
+    coupon_id: payload.couponId ?? null,
+  });
+  return response.data;
+}
+
+export async function mobilePaystackVerify(reference: string) {
+  const response = await apiClient.post<MobilePaystackVerifyResponse>("/api/payments/paystack/verify/", {
+    reference,
+  });
+  return response.data;
+}
+
+export async function mobileWalletCheckout(payload: MobileWalletCheckoutPayload) {
+  const response = await apiClient.post<MobileWalletCheckoutResponse>("/api/payments/wallet/checkout/", {
+    address_id: payload.addressId,
+    delivery_method: payload.deliveryMethod ?? "Door Step Delivery",
+    order_note: payload.orderNote ?? "Null",
+    coupon_code: payload.couponCode?.trim() || "",
+    coupon_id: payload.couponId ?? null,
+  });
+  return response.data;
+}
+
+export async function validateCouponCode(payload: { couponCode: string; email?: string }) {
+  const response = await apiClient.post<CouponValidateResponse>("/api/coupons/validate/", {
+    coupon_code: payload.couponCode.trim().toUpperCase(),
+    email: payload.email,
+  });
+  return response.data;
+}
+
+export async function useCouponById(couponId: number, email?: string) {
+  const response = await apiClient.post<{
+    success: boolean;
+    message?: string;
+    discount?: string | number;
+    error?: string;
+  }>(`/api/coupons/${couponId}/use/`, {
+    email,
+  });
+  return response.data;
+}
+
+export async function getCoupons() {
+  return fetchAllPages<ApiCoupon>("/api/coupons/");
+}
+
+export async function removeWishlistItem(id: number) {
+  await apiClient.delete(`/api/wishlist/${id}/`);
+}
+
+export async function addWishlistItem(productId: number) {
+  const response = await apiClient.post<ApiWishlistItem>("/api/wishlist/", { product: productId });
+  return response.data;
+}
+
+export async function toggleWishlistByProductId(productId: number) {
+  const items = await getWishlistItems();
+  const existing = items.find((item) => getWishlistProductId(item) === productId);
+
+  if (existing) {
+    await removeWishlistItem(existing.id);
+    return { action: "removed" as const };
+  }
+
+  await addWishlistItem(productId);
+  return { action: "added" as const };
+}
+
+export async function createProductReview(params: {
+  productId: number;
+  rating: number;
+  review: string;
+}) {
+  const response = await apiClient.post("/api/reviews/", {
+    product: params.productId,
+    rating: params.rating,
+    review: params.review,
+  });
+  return response.data;
+}

@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { SearchOrangeIcon } from "./general-ui";
 
@@ -86,14 +86,22 @@ export function CategoryArtwork({ size = 60 }: { size?: number }) {
 
 export function CategoryTile({
   label,
+  imageUrl,
   onPress,
 }: {
   label: string;
+  imageUrl?: string;
   onPress?: () => void;
 }) {
   return (
     <Pressable onPress={onPress} className="mb-7 w-[31%] items-center">
-      <CategoryArtwork />
+      {imageUrl ? (
+        <View className="h-[60px] w-[60px] overflow-hidden rounded-[10px]">
+          <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" />
+        </View>
+      ) : (
+        <CategoryArtwork />
+      )}
       <Text className="mt-2 text-center text-[11px] font-medium leading-[16px] text-primary">
         {label}
       </Text>
@@ -104,9 +112,11 @@ export function CategoryTile({
 export function SubcategorySection({
   title,
   items,
+  onPressItem,
 }: {
   title: string;
-  items: { label: string; emoji: string }[];
+  items: { label: string; emoji?: string; imageUrl?: string; levelTwoTitle?: string }[];
+  onPressItem?: (item: { label: string; emoji?: string; imageUrl?: string; levelTwoTitle?: string }) => void;
 }) {
   return (
     <View className="mb-9">
@@ -117,14 +127,18 @@ export function SubcategorySection({
 
       <View className="flex-row flex-wrap justify-between">
         {items.map((item) => (
-          <View key={item.label} className="mb-7 w-[30%] items-center">
-            <View className="h-12 w-12 items-center justify-center rounded-[10px] bg-[#F5F5F5]">
-              <Text className="text-[28px]">{item.emoji}</Text>
+          <Pressable key={item.label} className="mb-7 w-[30%] items-center" onPress={() => onPressItem?.(item)}>
+            <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-[10px] bg-[#F5F5F5]">
+              {item.imageUrl ? (
+                <Image source={{ uri: item.imageUrl }} className="h-full w-full" resizeMode="cover" />
+              ) : (
+                <Text className="text-[20px] font-semibold text-primary">{item.emoji ?? (item.label.charAt(0) || "C").toUpperCase()}</Text>
+              )}
             </View>
             <Text className="mt-2 text-center text-[12px] leading-[19px] text-[#333333]">
               {item.label}
             </Text>
-          </View>
+          </Pressable>
         ))}
       </View>
     </View>

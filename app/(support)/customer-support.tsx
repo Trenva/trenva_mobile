@@ -1,7 +1,13 @@
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import Svg, { Path, Rect } from "react-native-svg";
-import { BackIcon } from "../components/ui/general-ui";
+import { BackIcon } from "../../components/ui/general-ui";
+import { fetchProfile } from "../../lib/api/auth";
+import { clearAuthTokens } from "../../lib/auth/tokens";
+import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
+import { createContactForm } from "../../lib/api/shop";
+import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 
 function PhoneIcon() {
   return (
@@ -31,10 +37,14 @@ function MessageIcon() {
 function InputField({
   label,
   placeholder,
+  value,
+  onChangeText,
   multiline,
 }: {
   label: string;
   placeholder: string;
+  value: string;
+  onChangeText: (value: string) => void;
   multiline?: boolean;
 }) {
   return (
@@ -42,11 +52,14 @@ function InputField({
       <Text className="mb-2 text-[16px] text-[#2F2F2F]">{label}</Text>
       <View className={`rounded-2xl border border-[#6F5846] bg-white px-3 ${multiline ? "py-2" : ""}`}>
         <TextInput
+          value={value}
+          onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="#5E5E5E"
           className={`text-[16px] text-[#2F2F2F] ${multiline ? "min-h-[130px]" : "py-4"}`}
           multiline={multiline}
           textAlignVertical="top"
+          autoCapitalize="none"
         />
       </View>
     </View>
@@ -54,6 +67,64 @@ function InputField({
 }
 
 export default function CustomerSupportScreen() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    async function prefillFromProfile() {
+      try {
+        const profile = await fetchProfile();
+        if (!mounted) return;
+        const fullName = `${String(profile?.first_name ?? "").trim()} ${String(profile?.last_name ?? "").trim()}`.trim();
+        if (fullName) setName(fullName);
+        if (typeof profile?.email === "string") setEmail(profile.email);
+      } catch {
+        // Keep fields editable; prefill is optional.
+      }
+    }
+    void prefillFromProfile();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const canSubmit = useMemo(() => !isSubmitting, [isSubmitting]);
+
+  async function handleSubmit() {
+    if (!name.trim() || !email.trim() || !message.trim()) {
+      notifyError("Missing fields", "Name, email and message are required.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await createContactForm({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        subject: subject.trim() || "Customer Support",
+        message: message.trim(),
+      });
+
+      notifySuccess("Message sent", "Our support team will contact you soon.");
+      setSubject("");
+      setMessage("");
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await clearAuthTokens();
+        notifyInfo("Session expired", "Please log in again.");
+        router.replace("/(auth)/login");
+        return;
+      }
+      notifyError("Send failed", getApiErrorMessage(error, "Unable to send message right now."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <View className="flex-1 bg-[#F7F7F7]">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -65,19 +136,29 @@ export default function CustomerSupportScreen() {
 
         <View className="px-5 pt-4">
           <Text className="text-center text-[24px] font-medium text-[#2F2F2F]">Customer Support</Text>
-          <Text className="mt-5 text-[16px] text-[#2F2F2F]">Fill in complaint here</Text>
+          <Text className="mt-5 text-[16px] text-[#2F2F2F]">Fill your complaint here</Text>
 
           <View className="mt-4">
-            <InputField label="Username" placeholder="Enter Name" />
-            <InputField label="Email::" placeholder="Abbeth@gmail.com" />
-            <InputField label="Message::" placeholder="Your Mesage" multiline />
+            <InputField label="Username" placeholder="Enter name" value={name} onChangeText={setName} />
+            <InputField label="Email" placeholder="name@email.com" value={email} onChangeText={setEmail} />
+            <InputField label="Subject" placeholder="Support topic" value={subject} onChangeText={setSubject} />
+            <InputField label="Message" placeholder="Your message" value={message} onChangeText={setMessage} multiline />
           </View>
 
           <View className="mt-4 flex-row gap-4">
-            <Pressable className="flex-1 rounded-md bg-primary py-3.5">
-              <Text className="text-center text-[17px] font-medium text-white">Send Message</Text>
+            <Pressable
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              className={`flex-1 rounded-md py-3.5 ${canSubmit ? "bg-primary" : "bg-[#B9A89A]"}`}
+            >
+              <Text className="text-center text-[17px] font-medium text-white">
+                {isSubmitting ? "Sending..." : "Send Message"}
+              </Text>
             </Pressable>
-            <Pressable className="flex-1 flex-row items-center justify-center gap-2 rounded-md border border-primary bg-white py-3.5">
+            <Pressable
+              onPress={() => notifyInfo("Live chat", "Live chat will be enabled shortly.")}
+              className="flex-1 flex-row items-center justify-center gap-2 rounded-md border border-primary bg-white py-3.5"
+            >
               <MessageIcon />
               <Text className="text-[17px] font-medium text-primary">Live Chat</Text>
             </Pressable>
@@ -101,7 +182,7 @@ export default function CustomerSupportScreen() {
               <MailIcon />
             </View>
             <View className="flex-1">
-              <Text className="text-[18px] font-medium text-[#2F2F2F]">Write To US</Text>
+              <Text className="text-[18px] font-medium text-[#2F2F2F]">Write To Us</Text>
               <Text className="mt-4 text-[16px] leading-7 text-[#2F2F2F]">Fill out our form and we will contact you within 24 hours.</Text>
               <Text className="mt-2 text-[16px] text-[#2F2F2F]">Email: customer@gmail.com</Text>
             </View>
