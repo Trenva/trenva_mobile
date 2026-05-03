@@ -35,7 +35,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-
+.files_from_trenva_web/
 # generated native folders
 /ios
 /android
