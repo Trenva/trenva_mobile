@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon, TabIcon } from "../../components/ui/home-ui";
-import { formatMoney, getOrders } from "../../lib/api/shop";
+import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
+import { type ApiProduct, formatMoney, getOrders, getPublishedProducts, resolveProductCardImageUrl } from "../../lib/api/shop";
 import { useCheckoutStore } from "../../store/checkout-store";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 function SuccessBadgeIcon() {
   return (
@@ -19,27 +23,39 @@ function SuccessBadgeIcon() {
   );
 }
 
-function RecommendationCard() {
+function RecommendationCard({ product, colors }: { product: ApiProduct; colors: ReturnType<typeof useAppTheme>["colors"] }) {
+  const price = formatMoney(product.price);
+  const imageUrl = resolveProductCardImageUrl(product.image);
+  const rating = Number(product.average_rating ?? 0);
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: "product-name", name: "Product Name", price: "N 1200" } })}
-      className="mr-3 w-[150px] overflow-hidden rounded-[6px] bg-white shadow-sm"
+      onPress={() =>
+        router.push({
+          pathname: "/product/[slug]",
+          params: { slug: String(product.id ?? product.pid), name: product.title, price },
+        })
+      }
+      className="mr-3 w-[150px] overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card }}
     >
-      <View className="relative h-[110px] bg-[#E8E8E8]">
+      <View className="relative h-[110px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
         <View className="absolute right-3 top-3">
-          <HeartOutlineIcon color="#FF9F0A" size={20} />
+          <HeartOutlineIcon color={colors.primary} size={20} />
         </View>
       </View>
       <View className="px-2.5 pb-3 pt-3">
-        <Text className="text-[12px] font-medium text-[#333333]">Product Name</Text>
-        <Text className="mt-1 text-[14px] font-medium text-[#222222]">N 1200</Text>
-        <Text className="mt-1 text-[9px] text-[#A7A7A7]">* 4.5 - 123 Reviews</Text>
+        <Text className="text-[12px] font-medium" style={{ color: colors.text }} numberOfLines={1}>{product.title}</Text>
+        <Text className="mt-1 text-[14px] font-medium" style={{ color: colors.text }}>{price}</Text>
+        <Text className="mt-1 text-[9px]" style={{ color: colors.textMuted }}>
+          {rating > 0 ? `★ ${rating.toFixed(1)}` : "No ratings yet"}
+        </Text>
       </View>
     </Pressable>
   );
 }
 
-function BottomQuickNav() {
+function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
   const items = [
     { routeName: "index", path: "/(tabs)" as const },
     { routeName: "categories", path: "/(tabs)/categories" as const },
@@ -50,10 +66,10 @@ function BottomQuickNav() {
 
   return (
     <View className="px-4 pb-4 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] bg-[#FAF5EF] px-7 py-4">
+      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
         {items.map((item) => (
           <Pressable key={item.routeName} onPress={() => router.push(item.path)}>
-            <TabIcon routeName={item.routeName} color="#FF9F0A" />
+            <TabIcon routeName={item.routeName} color={colors.primary} />
           </Pressable>
         ))}
       </View>
@@ -62,35 +78,44 @@ function BottomQuickNav() {
 }
 
 export default function OrderOverviewScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ orderId?: string; total?: string; items?: string }>();
   const lastOrderId = useCheckoutStore((state) => state.lastOrderId);
   const [orderDate, setOrderDate] = useState<string | null>(null);
+  const [recommendedProducts, setRecommendedProducts] = useState<ApiProduct[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const activeOrderId = params.orderId || lastOrderId || "N/A";
   const totalAmount = Number(params.total ?? 0);
   const itemCount = Number(params.items ?? 0);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadOrderDate() {
-      try {
-        const orders = await getOrders();
+  async function loadData() {
+    try {
+      if (activeOrderId && activeOrderId !== "N/A") {
+        const [orders, products] = await Promise.all([getOrders(), getPublishedProducts()]);
         const found = orders.find((order) => order.oid === activeOrderId);
-        if (!mounted) return;
         if (found?.order_date) {
           const date = new Date(found.order_date);
           setOrderDate(Number.isNaN(date.getTime()) ? null : date.toLocaleDateString());
+        } else {
+          setOrderDate(null);
         }
-      } catch {
-        if (!mounted) return;
+        setRecommendedProducts(products.slice(0, 10));
+      } else {
+        const products = await getPublishedProducts();
         setOrderDate(null);
+        setRecommendedProducts(products.slice(0, 10));
       }
+    } catch {
+      setOrderDate(null);
+      setRecommendedProducts([]);
+    } finally {
+      setIsRefreshing(false);
     }
-    if (activeOrderId && activeOrderId !== "N/A") {
-      void loadOrderDate();
-    }
-    return () => {
-      mounted = false;
-    };
+  }
+
+  useEffect(() => {
+    void loadData();
   }, [activeOrderId]);
 
   const estDeliveryRange = useMemo(() => {
@@ -102,48 +127,67 @@ export default function OrderOverviewScreen() {
     return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
   }, []);
 
+  useEffect(() => {
+    prefetchImageUris(recommendedProducts.map((product) => resolveProductCardImageUrl(product.image)), 12);
+  }, [recommendedProducts]);
+
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <View className="px-4 pt-3">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadData();
+            }}
+          />
+        }
+      >
+        <View className="px-4 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
           <View className="mb-4 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <BellDarkIcon />
           </View>
 
-          <Text className="text-[24px] font-medium text-[#2E2E2E]">Order Overview</Text>
+          <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Order Overview</Text>
 
-          <View className="mt-4 rounded-[10px] border border-[#7C6240] bg-white px-4 py-4">
+          <View className="mt-4 rounded-[10px] border px-4 py-4" style={{ borderColor: colors.primary, backgroundColor: colors.card }}>
             <View className="items-center">
               <SuccessBadgeIcon />
-              <Text className="mt-3 text-[16px] font-medium text-[#333333]">Payment Has Been Confirmed</Text>
-              <Text className="mt-1 text-center text-[13px] text-[#666666]">Order ID: {activeOrderId}</Text>
-              {orderDate ? <Text className="mt-1 text-center text-[12px] text-[#8A8A8A]">Date: {orderDate}</Text> : null}
+              <Text className="mt-3 text-[16px] font-medium" style={{ color: colors.text }}>Payment Has Been Confirmed</Text>
+              <Text className="mt-1 text-center text-[13px]" style={{ color: colors.textMuted }}>Order ID: {activeOrderId}</Text>
+              {orderDate ? <Text className="mt-1 text-center text-[12px]" style={{ color: colors.textMuted }}>Date: {orderDate}</Text> : null}
             </View>
 
             <View className="mt-4 flex-row justify-between">
               <View>
-                <Text className="text-[14px] text-[#444444]">Total *{itemCount || 1}</Text>
-                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">{formatMoney(totalAmount)}</Text>
+                <Text className="text-[14px]" style={{ color: colors.text }}>Total *{itemCount || 1}</Text>
+                <Text className="mt-1 text-[20px] font-medium" style={{ color: colors.text }}>{formatMoney(totalAmount)}</Text>
               </View>
               <View>
-                <Text className="text-[14px] text-[#444444]">Est. Delivery</Text>
-                <Text className="mt-1 text-[20px] font-medium text-[#2F2F2F]">{estDeliveryRange}</Text>
+                <Text className="text-[14px]" style={{ color: colors.text }}>Est. Delivery</Text>
+                <Text className="mt-1 text-[20px] font-medium" style={{ color: colors.text }}>{estDeliveryRange}</Text>
               </View>
             </View>
           </View>
 
           <View className="mb-4 mt-7 flex-row items-center justify-between">
             <Text className="text-[16px] font-medium text-primary">Recommendations</Text>
-            <Text className="text-[14px] text-[#27272A] underline">More</Text>
+            <Pressable onPress={() => router.push("/featured")}>
+            <Text className="text-[14px] underline" style={{ color: colors.text }}>More</Text>
+            </Pressable>
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <RecommendationCard />
-            <RecommendationCard />
-            <RecommendationCard />
+            {recommendedProducts.map((product) => (
+              <RecommendationCard key={String(product.id ?? product.pid)} product={product} colors={colors} />
+            ))}
           </ScrollView>
 
           <Pressable onPress={() => router.replace("/(tabs)")} className="mt-8 rounded-full bg-primary py-3.5">
@@ -152,7 +196,10 @@ export default function OrderOverviewScreen() {
         </View>
       </ScrollView>
 
-      <BottomQuickNav />
+      <BottomQuickNav colors={colors} />
     </View>
   );
 }
+
+
+

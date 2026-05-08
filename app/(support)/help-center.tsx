@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { BackIcon, SearchGrayIcon } from "../../components/ui/general-ui";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 const faqs = [
   {
@@ -73,15 +76,17 @@ function HelpCard({
   id,
   title,
   icon,
+  onPress,
 }: {
   id: string;
   title: string;
   icon: ReactNode;
+  onPress?: () => void;
 }) {
   const gradientId = `helpCardGradient-${id}`;
 
   return (
-    <Pressable className="w-[48%] overflow-hidden rounded-[12px] px-3 py-3">
+    <Pressable onPress={onPress} className="w-[48%] overflow-hidden rounded-[12px] px-3 py-3">
       <View className="absolute inset-0">
         <Svg width="100%" height="100%" viewBox="0 0 210 120" preserveAspectRatio="none">
           <Defs>
@@ -119,14 +124,23 @@ function MinusIcon() {
 }
 
 export default function HelpCenterScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [openIndex, setOpenIndex] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setIsLoading(false), 250);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  function runRefresh(showLoader = true) {
+    if (showLoader) setIsLoading(true);
+    const timeout = setTimeout(() => {
+      if (showLoader) setIsLoading(false);
+      setIsRefreshing(false);
+    }, 250);
     return () => clearTimeout(timeout);
-  }, []);
+  }
+
+  useEffect(() => runRefresh(true), []);
 
   const normalizedQuery = searchText.trim().toLowerCase();
 
@@ -144,56 +158,70 @@ export default function HelpCenterScreen() {
   }, [normalizedQuery, filteredFaqs.length]);
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        <View className="flex-row items-center px-3 pt-3">
-          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              runRefresh(false);
+            }}
+          />
+        }
+      >
+        <View className="flex-row items-center px-3 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
+          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
             <BackIcon />
           </Pressable>
-          <Text className="flex-1 text-center text-[24px] text-[#2F2F2F]">Trenva Help Center</Text>
+          <Text className="flex-1 text-center text-[24px]" style={{ color: colors.text }}>Trenva Help Center</Text>
           <View className="w-8" />
         </View>
 
-        <View className="px-5 pt-6">
-          <Text className="text-center text-[24px] font-medium text-[#2F2F2F]">
+        <View className="px-5 pt-5">
+          <Text className="text-center text-[24px] font-medium" style={{ color: colors.text }}>
             <Text className="text-primary">Hello,</Text> How Can We Help?
           </Text>
 
-          <View className="mt-4 flex-row items-center rounded-2xl border border-[#3C3C3C] bg-white px-3 py-2">
+          <View className="mt-4 flex-row items-center rounded-2xl border px-3 py-2" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
             <SearchGrayIcon />
             <TextInput
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search FAQs"
-              placeholderTextColor="#868686"
-              className="ml-3 flex-1 py-1 text-[16px] text-[#2F2F2F]"
+              placeholderTextColor={colors.textMuted}
+              className="ml-3 flex-1 py-1 text-[16px]"
+              style={{ color: colors.text }}
             />
           </View>
 
           <Text className="mt-8 text-[18px] font-semibold text-primary">Self Service</Text>
           <View className="mt-4 flex-row flex-wrap justify-between gap-y-4">
-            <HelpCard id="wallet" title="How to use Wallet" icon={<WalletCardIcon />} />
-            <HelpCard id="deposit" title="How to Deposit" icon={<DepositCardIcon />} />
-            <HelpCard id="search" title="How to access Search Filter" icon={<SearchFilterCardIcon />} />
-            <HelpCard id="transactions" title="Accessing Transactions" icon={<TransactionsCardIcon />} />
+            <HelpCard id="wallet" title="How to use Wallet" icon={<WalletCardIcon />} onPress={() => router.push("/wallet")} />
+            <HelpCard id="deposit" title="How to Deposit" icon={<DepositCardIcon />} onPress={() => router.push("/wallet")} />
+            <HelpCard id="search" title="How to access Search Filter" icon={<SearchFilterCardIcon />} onPress={() => router.push("/filters")} />
+            <HelpCard id="transactions" title="Accessing Transactions" icon={<TransactionsCardIcon />} onPress={() => router.push("/orders")} />
           </View>
 
           <View className="mb-2 mt-8 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">FAQs</Text>
-            <Text className="text-[14px] text-[#27272A] underline">
+            <Text className="text-[14px] underline" style={{ color: colors.text }}>
               {isLoading ? "Loading..." : `${filteredFaqs.length} result${filteredFaqs.length === 1 ? "" : "s"}`}
             </Text>
           </View>
 
           {isLoading ? (
             <View className="py-6">
-              <Text className="text-[15px] text-[#6A6A6A]">Loading help content...</Text>
+              <Text className="text-[15px]" style={{ color: colors.textMuted }}>Loading help content...</Text>
             </View>
           ) : null}
 
           {!isLoading && filteredFaqs.length === 0 ? (
-            <View className="rounded-xl border border-[#E3E3E3] bg-white p-4">
-              <Text className="text-[15px] text-[#5A5A5A]">No FAQs matched your search. Try another keyword.</Text>
+            <View className="rounded-xl border p-4" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+              <Text className="text-[15px]" style={{ color: colors.textMuted }}>No FAQs matched your search. Try another keyword.</Text>
             </View>
           ) : null}
 
@@ -201,12 +229,12 @@ export default function HelpCenterScreen() {
             filteredFaqs.map((faq, index) => {
               const open = openIndex === index;
               return (
-                <View key={faq.question} className="border-b border-[#B7B7B7] py-4">
+                <View key={faq.question} className="border-b py-4" style={{ borderColor: colors.border }}>
                   <Pressable onPress={() => setOpenIndex(open ? -1 : index)} className="flex-row items-center justify-between">
-                    <Text className="max-w-[85%] text-[18px] font-medium text-[#1F1F1F]">{faq.question}</Text>
+                    <Text className="max-w-[85%] text-[18px] font-medium" style={{ color: colors.text }}>{faq.question}</Text>
                     {open ? <MinusIcon /> : <PlusIcon />}
                   </Pressable>
-                  {open && faq.answer ? <Text className="mt-3 text-[14px] leading-7 text-[#4F4F4F]">{faq.answer}</Text> : null}
+                  {open && faq.answer ? <Text className="mt-3 text-[14px] leading-7" style={{ color: colors.textMuted }}>{faq.answer}</Text> : null}
                 </View>
               );
             })}
@@ -215,3 +243,6 @@ export default function HelpCenterScreen() {
     </View>
   );
 }
+
+
+

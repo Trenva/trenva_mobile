@@ -1,11 +1,16 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon } from "../../components/ui/general-ui";
 import { createAddress } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 export default function AddAddressScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -45,28 +50,31 @@ export default function AddAddressScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center px-4 pb-2 pt-3">
-        <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View className="flex-row items-center px-4 pb-2" style={{ paddingTop: Math.max(insets.top + 4, 12) }}>
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
           <BackIcon />
         </Pressable>
-        <Text className="ml-2 text-[22px] font-medium text-[#2F2F2F]">Add Address</Text>
+        <Text className="ml-2 text-[22px] font-medium" style={{ color: colors.text }}>Add Address</Text>
       </View>
 
       <ScrollView className="px-4" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        <TextInput value={firstName} onChangeText={setFirstName} placeholder="First name" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={lastName} onChangeText={setLastName} placeholder="Last name" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={phone} onChangeText={setPhone} placeholder="Phone number" keyboardType="phone-pad" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={address} onChangeText={setAddress} placeholder="Street address" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={city} onChangeText={setCity} placeholder="City" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={state} onChangeText={setState} placeholder="State" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={postal} onChangeText={setPostal} placeholder="Postal code" className="mb-3 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
-        <TextInput value={country} onChangeText={setCountry} placeholder="Country" className="mb-4 rounded-[12px] border border-[#D6D6D6] bg-white px-3 py-3 text-[14px]" />
+        <TextInput value={firstName} onChangeText={setFirstName} placeholder="First name" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={lastName} onChangeText={setLastName} placeholder="Last name" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={phone} onChangeText={setPhone} placeholder="Phone number" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={address} onChangeText={setAddress} placeholder="Street address" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={city} onChangeText={setCity} placeholder="City" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={state} onChangeText={setState} placeholder="State" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={postal} onChangeText={setPostal} placeholder="Postal code" placeholderTextColor={colors.textMuted} className="mb-3 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
+        <TextInput value={country} onChangeText={setCountry} placeholder="Country" placeholderTextColor={colors.textMuted} className="mb-4 rounded-[12px] border px-3 py-3 text-[14px]" style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.text }} />
 
         <Pressable onPress={handleSaveAddress} disabled={isSaving} className="rounded-full bg-primary py-3.5">
-          {isSaving ? <ActivityIndicator color="#fff" /> : <Text className="text-center text-[16px] font-medium text-white">Save Address</Text>}
+          {isSaving ? <ActivityIndicator color={colors.card} /> : <Text className="text-center text-[16px] font-medium text-white">Save Address</Text>}
         </Pressable>
       </ScrollView>
     </View>
   );
 }
+
+
+

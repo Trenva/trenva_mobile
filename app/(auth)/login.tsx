@@ -97,7 +97,7 @@ export default function LoginScreen() {
               label="Remember me"
             />
 
-            <Pressable>
+            <Pressable onPress={() => router.push("/verification-code")}>
               <Text className="text-[15px] font-semibold leading-5 text-primary">
                 Forgot Password ?
               </Text>

@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { notifySuccess } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
 import { formatMoney, getWallets } from "../../lib/api/shop";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 const methods = [
   { id: "paystack", label: "Paystack", type: "paystack" },
@@ -56,27 +58,28 @@ function PaymentRow({
   type,
   active,
   disabled,
+  colors,
   onPress,
 }: {
   label: string;
   type: (typeof methods)[number]["type"];
   active: boolean;
   disabled?: boolean;
+  colors: ReturnType<typeof useAppTheme>["colors"];
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`mb-3 flex-row items-center justify-between rounded-[12px] border px-3 py-3.5 ${
-        disabled ? "border-[#DDDDDD] bg-[#F1F1F1]" : "border-[#BEBEBE] bg-white"
-      }`}
+      className="mb-3 flex-row items-center justify-between rounded-[12px] border px-3 py-3.5"
+      style={{ borderColor: colors.border, backgroundColor: disabled ? colors.elevated : colors.card }}
     >
       <View className="flex-row items-center gap-3">
         <MethodIcon type={type} />
-        <Text className={`text-[15px] ${disabled ? "text-[#A5A5A5]" : "text-[#2F2F2F]"}`}>{label}</Text>
+        <Text className="text-[15px]" style={{ color: disabled ? colors.textMuted : colors.text }}>{label}</Text>
       </View>
-      <View className={`h-6 w-6 rounded-full border-2 ${active ? "border-primary" : "border-[#C6C6C6]"}`}>
+      <View className="h-6 w-6 rounded-full border-2" style={{ borderColor: active ? colors.primary : colors.border }}>
         {active ? <View className="m-[4px] h-3 w-3 rounded-full bg-primary" /> : null}
       </View>
     </Pressable>
@@ -84,6 +87,8 @@ function PaymentRow({
 }
 
 export default function PaymentsScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState("paystack");
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -125,23 +130,26 @@ export default function PaymentsScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View
+        className="flex-row items-center justify-between px-4 pb-2"
+        style={{ paddingTop: Math.max(insets.top + 4, 12) }}
+      >
         <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
           <BackIcon />
         </Pressable>
-        <Text className="text-[24px] font-medium text-[#2F2F2F]">Payments</Text>
+        <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Payments</Text>
         <BellDarkIcon />
       </View>
 
       <View className="px-5">
         <View className="mb-7 mt-1 flex-row gap-2">
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
           <View className="h-[4px] flex-1 rounded-full bg-primary" />
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
         </View>
 
-        <Text className="mb-5 text-[16px] font-medium text-[#353535]">Payment Options</Text>
+        <Text className="mb-5 text-[16px] font-medium" style={{ color: colors.text }}>Payment Options</Text>
         {methods.slice(0, 3).map((method) => (
           <PaymentRow
             key={method.id}
@@ -155,22 +163,24 @@ export default function PaymentsScreen() {
             type={method.type}
             active={selected === method.id}
             disabled={method.id === "flutterwave"}
+            colors={colors}
             onPress={() => setSelected(method.id)}
           />
         ))}
         {isLoadingWallet ? (
           <View className="mb-2 mt-1 flex-row items-center">
-            <ActivityIndicator color="#FF9B00" size="small" />
-            <Text className="ml-2 text-[12px] text-[#8A8A8A]">Loading wallet...</Text>
+            <ActivityIndicator color={colors.primary} size="small" />
+            <Text className="ml-2 text-[12px]" style={{ color: colors.textMuted }}>Loading wallet...</Text>
           </View>
         ) : null}
 
-        <Text className="mb-4 mt-5 text-[16px] font-medium text-[#353535]">Cash on Delivery</Text>
+        <Text className="mb-4 mt-5 text-[16px] font-medium" style={{ color: colors.text }}>Cash on Delivery</Text>
         <PaymentRow
           label={`${methods[3].label} (Coming soon)`}
           type={methods[3].type}
           active={selected === methods[3].id}
           disabled
+          colors={colors}
           onPress={() => setSelected(methods[3].id)}
         />
       </View>

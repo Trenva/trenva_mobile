@@ -1,8 +1,7 @@
-import { View, Text, Pressable, Image } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 import { TrashIcon } from "../ui/home-ui";
-import { Path } from "react-native-svg";
-import { Svg } from "react-native-svg";
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 type CartItemProps = {
   name: string;
@@ -22,8 +21,6 @@ type PriceDetailsProps = {
   total: string;
 };
 
-// ─── CartItem Component ───────────────────────────────────────────────────────
-
 export function CartItem({
   name,
   price,
@@ -33,30 +30,20 @@ export function CartItem({
   onDelete,
   onQuantityChange,
 }: CartItemProps) {
+  const { colors } = useAppTheme();
+
   const isOutOfStock = stock === "Out of Stock";
   const isLowStock = stock.includes("left");
-
-  const stockColor = isOutOfStock
-    ? "text-red-500"
-    : isLowStock
-    ? "text-primary"
-    : "text-green-500";
+  const stockColor = isOutOfStock ? "#EF4444" : isLowStock ? colors.primary : "#22C55E";
 
   return (
-    <View className="mx-4 mb-4 rounded-md bg-gray-50 px-4 py-4 ">
+    <View className="mx-4 mb-4 rounded-md px-4 py-4" style={{ backgroundColor: colors.elevated }}>
       <View className="flex-row">
-        {/* Product Image */}
-        <Image
-          source={image}
-          className="h-24 w-24 rounded-xl"
-          resizeMode="cover"
-        />
+        <Image source={image} className="h-24 w-24 rounded-xl" resizeMode="cover" />
 
-        {/* Details */}
         <View className="ml-4 flex-1">
-          {/* Name + Trash */}
           <View className="flex-row items-start justify-between">
-            <Text className="flex-1 pr-2 text-sm font-semibold text-gray-800">
+            <Text className="flex-1 pr-2 text-sm font-semibold" style={{ color: colors.text }}>
               {name}
             </Text>
             <Pressable onPress={onDelete} hitSlop={8}>
@@ -64,34 +51,24 @@ export function CartItem({
             </Pressable>
           </View>
 
-          {/* Price */}
-          <Text className="mt-1 text-base font-bold text-gray-800">
-            ₹{price}
+          <Text className="mt-1 text-base font-bold" style={{ color: colors.text }}>
+            {`₹${price}`}
           </Text>
 
-          {/* Quantity Stepper + Stock */}
           <View className="mt-3 flex-row items-center justify-between">
-            {/* Stepper */}
             <View className="flex-row items-center gap-3">
-              <Pressable
-                onPress={() => onQuantityChange(Math.max(1, quantity - 1))}
-                hitSlop={8}
-              >
-                <Text className="text-xl font-bold text-gray-800">−</Text>
+              <Pressable onPress={() => onQuantityChange(Math.max(1, quantity - 1))} hitSlop={8}>
+                <Text className="text-xl font-bold" style={{ color: colors.text }}>-</Text>
               </Pressable>
-              <Text className="text-sm font-semibold text-gray-800">
+              <Text className="text-sm font-semibold" style={{ color: colors.text }}>
                 {quantity}
               </Text>
-              <Pressable
-                onPress={() => onQuantityChange(quantity + 1)}
-                hitSlop={8}
-              >
-                <Text className="text-xl font-bold text-gray-800">+</Text>
+              <Pressable onPress={() => onQuantityChange(quantity + 1)} hitSlop={8}>
+                <Text className="text-xl font-bold" style={{ color: colors.text }}>+</Text>
               </Pressable>
             </View>
 
-            {/* Stock Status */}
-            <Text className={`text-xs font-semibold ${stockColor}`}>
+            <Text className="text-xs font-semibold" style={{ color: stockColor }}>
               {stock}
             </Text>
           </View>
@@ -101,46 +78,35 @@ export function CartItem({
   );
 }
 
-// ─── PriceDetails Component ───────────────────────────────────────────────────
+export function PriceDetails({ items, subtotal, discount, delivery, total }: PriceDetailsProps) {
+  const { colors } = useAppTheme();
 
-export function PriceDetails({
-  items,
-  subtotal,
-  discount,
-  delivery,
-  total,
-}: PriceDetailsProps) {
   return (
-    <View className="mx-4 mt-2 mb-4 rounded-2xl bg-white px-5 py-5 shadow-sm">
-      <Text className="mb-4 text-base font-bold text-gray-800">
+    <View className="mx-4 mt-2 mb-4 rounded-2xl px-5 py-5 shadow-sm" style={{ backgroundColor: colors.card }}>
+      <Text className="mb-4 text-base font-bold" style={{ color: colors.text }}>
         Price Details
       </Text>
 
-      {/* Price Row */}
       <View className="mb-3 flex-row items-center justify-between">
-        <Text className="text-sm text-gray-500">Price ({items} Items)</Text>
-        <Text className="text-sm font-semibold text-gray-800">₹{subtotal}</Text>
+        <Text className="text-sm" style={{ color: colors.textMuted }}>{`Price (${items} Items)`}</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${subtotal}`}</Text>
       </View>
 
-      {/* Discount Row */}
       <View className="mb-3 flex-row items-center justify-between">
-        <Text className="text-sm text-gray-500">Discount</Text>
-        <Text className="text-sm font-semibold text-gray-800">₹{discount}</Text>
+        <Text className="text-sm" style={{ color: colors.textMuted }}>Discount</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${discount}`}</Text>
       </View>
 
-      {/* Delivery Row */}
       <View className="mb-4 flex-row items-center justify-between">
-        <Text className="text-sm text-gray-500">Delivery Charges</Text>
-        <Text className="text-sm font-semibold text-gray-800">₹{delivery}</Text>
+        <Text className="text-sm" style={{ color: colors.textMuted }}>Delivery Charges</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${delivery}`}</Text>
       </View>
 
-      {/* Divider */}
-      <View className="mb-4 h-px bg-gray-200" />
+      <View className="mb-4 h-px" style={{ backgroundColor: colors.border }} />
 
-      {/* Total Row */}
       <View className="flex-row items-center justify-between">
-        <Text className="text-base font-bold text-gray-800">Total Amount</Text>
-        <Text className="text-base font-bold text-gray-800">₹{total}</Text>
+        <Text className="text-base font-bold" style={{ color: colors.text }}>Total Amount</Text>
+        <Text className="text-base font-bold" style={{ color: colors.text }}>{`₹${total}`}</Text>
       </View>
     </View>
   );
@@ -149,13 +115,7 @@ export function PriceDetails({
 export function BackIcon() {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M5 12H19M5 12L9 16M5 12L9 8"
-        stroke="#000"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <Path d="M5 12H19M5 12L9 16M5 12L9 8" stroke="#1F2937" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Pressable, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 function SuccessIcon() {
   return (
@@ -16,6 +17,7 @@ function SuccessIcon() {
 }
 
 export default function PaymentSuccessScreen() {
+  const { colors } = useAppTheme();
   const params = useLocalSearchParams<{
     orderId?: string;
     total?: string;
@@ -49,7 +51,8 @@ export default function PaymentSuccessScreen() {
           },
         })
       }
-      className="flex-1 items-center justify-center bg-[#F7F7F7]"
+      className="flex-1 items-center justify-center"
+      style={{ backgroundColor: colors.background }}
     >
       <SuccessIcon />
     </Pressable>

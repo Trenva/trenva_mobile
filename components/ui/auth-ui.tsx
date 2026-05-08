@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Image, Platform, Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { router } from "expo-router";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 const nameLogo = require("../../assets/name-logo.png");
 
@@ -111,8 +112,9 @@ export function AuthHeader({
 }
 
 export function AuthCard({ children }: { children: ReactNode }) {
+  const { colors } = useAppTheme();
   return (
-    <View className="-mt-24 mx-6 rounded-[15px] bg-white px-6 pb-[18px] pt-6 shadow-sm">
+    <View className="-mt-24 mx-6 rounded-[15px] px-6 pb-[18px] pt-6 shadow-sm" style={{ backgroundColor: colors.card }}>
       {children}
     </View>
   );
@@ -128,6 +130,7 @@ export function AuthField({
   autoCapitalize = "sentences",
   rightIcon,
 }: FieldProps) {
+  const { colors } = useAppTheme();
   return (
     <View className="mb-4">
       {label ? (
@@ -136,16 +139,17 @@ export function AuthField({
         </Text>
       ) : null}
 
-      <View className="min-h-[46px] flex-row items-center rounded-xl border border-gray-200 bg-white">
+      <View className="min-h-[46px] flex-row items-center rounded-xl border" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#9AA3AF"
+          placeholderTextColor={colors.textMuted}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
-          className="flex-1 px-[14px] py-3 text-base leading-5 text-[#20242A] ios:py-[14px]"
+          className="flex-1 px-[14px] py-3 text-base leading-5 ios:py-[14px]"
+          style={{ color: colors.text }}
         />
         {rightIcon ? <View className="px-[14px]">{rightIcon}</View> : null}
       </View>
@@ -164,20 +168,22 @@ export function NameFields({
   lastName: string;
   setLastName: (text: string) => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <View className="flex-row gap-4">
       <View className="flex-1">
         <Text className="mb-2 text-[13px] font-medium leading-[18px] text-gray-500">
           First Name
         </Text>
-        <View className="min-h-[46px] flex-row items-center rounded-xl border border-gray-200 bg-white">
+        <View className="min-h-[46px] flex-row items-center rounded-xl border" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <TextInput
             value={firstName}
             onChangeText={setFirstName}
             placeholder="AK"
-            placeholderTextColor="#9AA3AF"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
-            className="flex-1 px-[14px] py-3 text-base leading-5 text-[#20242A] ios:py-[14px]"
+            className="flex-1 px-[14px] py-3 text-base leading-5 ios:py-[14px]"
+            style={{ color: colors.text }}
           />
         </View>
       </View>
@@ -186,14 +192,15 @@ export function NameFields({
         <Text className="mb-2 text-[13px] font-medium leading-[18px] text-gray-500">
           Last Name
         </Text>
-        <View className="min-h-[46px] flex-row items-center rounded-xl border border-gray-200 bg-white">
+        <View className="min-h-[46px] flex-row items-center rounded-xl border" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <TextInput
             value={lastName}
             onChangeText={setLastName}
             placeholder="Beth"
-            placeholderTextColor="#9AA3AF"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="words"
-            className="flex-1 px-[14px] py-3 text-base leading-5 text-[#20242A] ios:py-[14px]"
+            className="flex-1 px-[14px] py-3 text-base leading-5 ios:py-[14px]"
+            style={{ color: colors.text }}
           />
         </View>
       </View>
@@ -208,12 +215,13 @@ export function PhoneField({
   value: string;
   onChangeText: (text: string) => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <View className="mb-4">
       <Text className="mb-2 text-[13px] font-medium leading-[18px] text-gray-500">
         Phone Number
       </Text>
-      <View className="min-h-[46px] flex-row items-center rounded-xl border border-gray-200 bg-white">
+      <View className="min-h-[46px] flex-row items-center rounded-xl border" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
         <View className="flex-row items-center gap-2 pl-[14px] pr-[10px]">
           <Text className="text-base">🇩🇰</Text>
           <ChevronDownIcon />
@@ -223,9 +231,10 @@ export function PhoneField({
           value={value}
           onChangeText={onChangeText}
           placeholder="(454) 726-0592"
-          placeholderTextColor="#9AA3AF"
+          placeholderTextColor={colors.textMuted}
           keyboardType="phone-pad"
-          className="flex-1 px-3 py-3 text-base leading-5 text-[#20242A] ios:py-[14px]"
+          className="flex-1 px-3 py-3 text-base leading-5 ios:py-[14px]"
+          style={{ color: colors.text }}
         />
       </View>
     </View>
@@ -251,6 +260,84 @@ export function PrimaryButton({
   );
 }
 
+export function PhoneFieldWithCountry({
+  value,
+  onChangeText,
+  countryCode,
+  onChangeCountryCode,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  countryCode: string;
+  onChangeCountryCode: (code: string) => void;
+}) {
+  const { colors } = useAppTheme();
+  const [open, setOpen] = useState(false);
+  const countries = [
+    { code: "+234", flag: "🇳🇬", name: "Nigeria" },
+    { code: "+233", flag: "🇬🇭", name: "Ghana" },
+  ];
+  const selectedCountry = countries.find((item) => item.code === countryCode) ?? countries[0];
+
+  return (
+    <View className="mb-4" style={{ zIndex: open ? 50 : 1 }}>
+      <Text className="mb-2 text-[13px] font-medium leading-[18px] text-gray-500">
+        Phone Number
+      </Text>
+      <View className="relative">
+        <View className="min-h-[46px] flex-row items-center rounded-xl border" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <Pressable className="flex-row items-center gap-2 pl-[14px] pr-[10px]" onPress={() => setOpen((prev) => !prev)}>
+            <Text className="text-base">{selectedCountry.flag}</Text>
+            <Text className="text-[14px] font-medium" style={{ color: colors.text }}>{selectedCountry.code}</Text>
+            <ChevronDownIcon />
+          </Pressable>
+          <View className="self-stretch w-px bg-gray-200" />
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder="(454) 726-0592"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            className="flex-1 px-3 py-3 text-base leading-5 ios:py-[14px]"
+            style={{ color: colors.text }}
+          />
+        </View>
+        {open ? (
+          <View
+            className="absolute left-0 right-0 top-[50px] z-20 overflow-hidden rounded-xl border"
+            style={{
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              elevation: 12,
+              shadowColor: "#000",
+              shadowOpacity: 0.16,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+            }}
+          >
+            {countries.map((item) => (
+              <Pressable
+                key={item.code}
+                className="flex-row items-center gap-2 px-4 py-3"
+                style={{ backgroundColor: colors.card }}
+                onPress={() => {
+                  onChangeCountryCode(item.code);
+                  setOpen(false);
+                }}
+              >
+                <Text className="text-base">{item.flag}</Text>
+                <Text className={`${countryCode === item.code ? "font-semibold text-primary" : ""}`} style={countryCode === item.code ? undefined : { color: colors.text }}>
+                  {item.name} ({item.code})
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export function GoogleButton({
   title,
   onPress,
@@ -258,13 +345,15 @@ export function GoogleButton({
   title: string;
   onPress?: () => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable
-      className="min-h-[46px] flex-row items-center justify-center gap-3 rounded-xl border border-primary bg-white"
+      className="min-h-[46px] flex-row items-center justify-center gap-3 rounded-xl border border-primary"
+      style={{ backgroundColor: colors.card }}
       onPress={onPress}
     >
       <GoogleGlyph />
-      <Text className="text-base font-semibold leading-5 text-[#20242A]">
+      <Text className="text-base font-semibold leading-5" style={{ color: colors.text }}>
         {title}
       </Text>
     </Pressable>
@@ -272,11 +361,12 @@ export function GoogleButton({
 }
 
 export function Divider({ text }: { text: string }) {
+  const { colors } = useAppTheme();
   return (
     <View className="my-[18px] flex-row items-center gap-4">
-      <View className="h-px flex-1 bg-gray-200" />
-      <Text className="text-sm leading-[18px] text-[#7D8184]">{text}</Text>
-      <View className="h-px flex-1 bg-gray-200" />
+      <View className="h-px flex-1" style={{ backgroundColor: colors.border }} />
+      <Text className="text-sm leading-[18px]" style={{ color: colors.textMuted }}>{text}</Text>
+      <View className="h-px flex-1" style={{ backgroundColor: colors.border }} />
     </View>
   );
 }
@@ -290,12 +380,14 @@ export function Checkbox({
   onPress: () => void;
   label: string;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable className="flex-row items-center gap-2.5" onPress={onPress}>
       <View
         className={`h-4 w-4 items-center justify-center rounded border ${
-          checked ? "border-primary bg-primary" : "border-[#98A2B3] bg-white"
+          checked ? "border-primary bg-primary" : ""
         }`}
+        style={checked ? undefined : { borderColor: colors.border, backgroundColor: colors.card }}
       >
         {checked ? <CheckIcon /> : null}
       </View>

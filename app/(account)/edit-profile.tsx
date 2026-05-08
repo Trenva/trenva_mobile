@@ -1,35 +1,39 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Modal, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import Svg, { Path, Rect } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
 import { fetchProfile, type UserProfile, updateProfile } from "../../lib/api/auth";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
-function TrashIcon() {
+function TrashIcon({ color }: { color: string }) {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Path d="M19 6H5M9 11V17M15 11V17M4 6H20L18.2 19.6C18.1 20.8 17 21.7 15.8 21.7H8.2C7 21.7 5.9 20.8 5.8 19.6L4 6Z" stroke="#2D2D2D" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M19 6H5M9 11V17M15 11V17M4 6H20L18.2 19.6C18.1 20.8 17 21.7 15.8 21.7H8.2C7 21.7 5.9 20.8 5.8 19.6L4 6Z" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
 
-function DownIcon() {
+function DownIcon({ color }: { color: string }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path d="M6 9L12 15L18 9" stroke="#2D2D2D" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M6 9L12 15L18 9" stroke={color} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
 
-function CalendarIcon() {
+function CalendarIcon({ color }: { color: string }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Rect x={3} y={5} width={18} height={16} rx={2.5} stroke="#2D2D2D" strokeWidth={1.6} />
-      <Path d="M3 9H21M8 3V7M16 3V7" stroke="#2D2D2D" strokeWidth={1.6} strokeLinecap="round" />
+      <Rect x={3} y={5} width={18} height={16} rx={2.5} stroke={color} strokeWidth={1.6} />
+      <Path d="M3 9H21M8 3V7M16 3V7" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -49,18 +53,20 @@ function Field({
   right?: ReactNode;
   keyboardType?: "default" | "email-address" | "phone-pad";
 }) {
+  const { colors } = useAppTheme();
   return (
-    <View className="mb-6">
-      <Text className="mb-2 text-[16px] text-[#2F2F2F]">{label}</Text>
-      <View className="flex-row items-center rounded-2xl border border-[#7A5E48] bg-white px-3">
+    <View className="mb-4">
+      <Text className="mb-2 text-[16px]" style={{ color: colors.text }}>{label}</Text>
+      <View className="flex-row items-center rounded-2xl border px-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#6A6A6A"
+          placeholderTextColor={colors.textMuted}
           keyboardType={keyboardType}
           autoCapitalize="none"
-          className="flex-1 py-4 text-[16px] text-[#2F2F2F]"
+          className="flex-1 py-4 text-[16px]"
+          style={{ color: colors.text }}
         />
         {right}
       </View>
@@ -69,6 +75,8 @@ function Field({
 }
 
 export default function EditProfileScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,14 +85,18 @@ export default function EditProfileScreen() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showGenderMenu, setShowGenderMenu] = useState(false);
+  const [showDobPicker, setShowDobPicker] = useState(false);
+  const [dobDate, setDobDate] = useState<Date>(new Date(2000, 0, 1));
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadProfile() {
+    async function loadProfile(showLoader = true) {
       try {
-        setIsLoading(true);
+        if (showLoader) setIsLoading(true);
         const data = await fetchProfile();
         if (!isMounted) return;
 
@@ -105,6 +117,10 @@ export default function EditProfileScreen() {
           (typeof data.dob === "string" && data.dob) ||
           "";
         setDateOfBirth(profileDob);
+        if (profileDob) {
+          const parsed = new Date(profileDob);
+          if (!Number.isNaN(parsed.getTime())) setDobDate(parsed);
+        }
       } catch (error) {
         if (isUnauthorizedError(error)) {
           await clearAuthTokens();
@@ -115,6 +131,7 @@ export default function EditProfileScreen() {
         notifyError("Profile load failed", "Unable to load profile data.");
       } finally {
         if (isMounted) setIsLoading(false);
+        if (isMounted) setIsRefreshing(false);
       }
     }
 
@@ -124,7 +141,44 @@ export default function EditProfileScreen() {
     };
   }, []);
 
+  async function refreshProfile() {
+    setIsRefreshing(true);
+    try {
+      const data = await fetchProfile();
+      setProfile(data);
+      setFirstName(typeof data.first_name === "string" ? data.first_name : "");
+      setLastName(typeof data.last_name === "string" ? data.last_name : "");
+      setEmail(typeof data.email === "string" ? data.email : "");
+      const profilePhone =
+        (typeof data.phone === "string" && data.phone) ||
+        (typeof data.phone_number === "string" && data.phone_number) ||
+        "";
+      setPhone(profilePhone);
+      setGender(typeof data.gender === "string" ? data.gender : "");
+      const profileDob =
+        (typeof data.date_of_birth === "string" && data.date_of_birth) ||
+        (typeof data.dob === "string" && data.dob) ||
+        "";
+      setDateOfBirth(profileDob);
+      if (profileDob) {
+        const parsed = new Date(profileDob);
+        if (!Number.isNaN(parsed.getTime())) setDobDate(parsed);
+      }
+    } catch {
+      notifyError("Refresh failed", "Unable to refresh profile.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   const canSubmit = useMemo(() => !isLoading && !isSubmitting, [isLoading, isSubmitting]);
+
+  function toIsoDate(value: Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
 
   async function handleSave() {
     if (!profile) {
@@ -175,19 +229,24 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 26 }}>
-        <View className="flex-row items-center justify-between px-5 pt-3">
-          <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ paddingBottom: 26 }}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refreshProfile()} />}
+      >
+        <View className="flex-row items-center justify-between px-5 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
+          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
             <BackIcon />
           </Pressable>
-          <Text className="text-[24px] font-medium text-[#2F2F2F]">Edit Profile</Text>
-          <Pressable>
-            <TrashIcon />
-          </Pressable>
+          <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Edit Profile</Text>
+          <View className="h-8 w-8 items-center justify-center">
+            <TrashIcon color={colors.textMuted} />
+          </View>
         </View>
 
-        <View className="px-5 pt-8">
+        <View className="px-5 pt-6">
           <Field label="First Name" value={firstName} onChangeText={setFirstName} placeholder="Enter first name" />
           <Field label="Last Name" value={lastName} onChangeText={setLastName} placeholder="Enter last name" />
           <Field
@@ -204,19 +263,105 @@ export default function EditProfileScreen() {
             placeholder="08012345678"
             keyboardType="phone-pad"
           />
-          <Field label="Gender" value={gender} onChangeText={setGender} placeholder="What's your gender?" right={<DownIcon />} />
-          <Field
-            label="Date of Birth"
-            value={dateOfBirth}
-            onChangeText={setDateOfBirth}
-            placeholder="YYYY-MM-DD"
-            right={<CalendarIcon />}
-          />
+          <View className="mb-4">
+            <Text className="mb-2 text-[16px]" style={{ color: colors.text }}>Gender</Text>
+            <Pressable
+              onPress={() => setShowGenderMenu(true)}
+              className="flex-row items-center rounded-2xl border px-3 py-4"
+              style={{ borderColor: colors.border, backgroundColor: colors.card }}
+            >
+              <Text className="flex-1 text-[16px]" style={{ color: gender ? colors.text : colors.textMuted }}>
+                {gender || "Select gender"}
+              </Text>
+              <DownIcon color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <View className="mb-4">
+            <Text className="mb-2 text-[16px]" style={{ color: colors.text }}>Date of Birth</Text>
+            <Pressable
+              onPress={() => {
+                if (Platform.OS === "android") {
+                  DateTimePickerAndroid.open({
+                    value: dobDate,
+                    mode: "date",
+                    is24Hour: true,
+                    maximumDate: new Date(),
+                    onChange: (event, selectedDate) => {
+                      if (event.type === "dismissed" || !selectedDate) return;
+                      setDobDate(selectedDate);
+                      setDateOfBirth(toIsoDate(selectedDate));
+                    },
+                  });
+                  return;
+                }
+                setShowDobPicker(true);
+              }}
+              className="flex-row items-center rounded-2xl border px-3 py-4"
+              style={{ borderColor: colors.border, backgroundColor: colors.card }}
+            >
+              <Text className="flex-1 text-[16px]" style={{ color: dateOfBirth ? colors.text : colors.textMuted }}>
+                {dateOfBirth || "YYYY-MM-DD"}
+              </Text>
+              <CalendarIcon color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          {showDobPicker && Platform.OS !== "android" ? (
+            <DateTimePicker
+              value={dobDate}
+              mode="date"
+              display="spinner"
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                if (event.type === "dismissed") {
+                  setShowDobPicker(false);
+                  return;
+                }
+                if (!selectedDate) return;
+                setDobDate(selectedDate);
+                setDateOfBirth(toIsoDate(selectedDate));
+              }}
+            />
+          ) : null}
+
+          <Modal
+            visible={showGenderMenu}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowGenderMenu(false)}
+          >
+            <Pressable
+              className="flex-1 items-center justify-center bg-black/35 px-6"
+              onPress={() => setShowGenderMenu(false)}
+            >
+              <View className="w-full max-w-[340px] overflow-hidden rounded-2xl" style={{ backgroundColor: colors.card }}>
+                <View className="border-b px-4 py-3" style={{ borderColor: colors.border }}>
+                  <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>Select gender</Text>
+                </View>
+                {["Male", "Female"].map((option) => (
+                  <Pressable
+                    key={option}
+                    onPress={() => {
+                      setGender(option);
+                      setShowGenderMenu(false);
+                    }}
+                    className="px-4 py-4"
+                  >
+                    <Text className={`text-[15px] ${gender === option ? "font-semibold text-primary" : ""}`} style={gender === option ? undefined : { color: colors.text }}>
+                      {option}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </Pressable>
+          </Modal>
 
           <Pressable
             onPress={handleSave}
             disabled={!canSubmit}
-            className={`mt-2 rounded-full py-3.5 ${canSubmit ? "bg-primary" : "bg-[#B9A89A]"}`}
+            className="mt-2 rounded-full py-3.5"
+            style={{ backgroundColor: canSubmit ? colors.primary : colors.border }}
           >
             <Text className="text-center text-[16px] text-white">
               {isLoading ? "Loading..." : isSubmitting ? "Updating..." : "Update"}
@@ -227,3 +372,6 @@ export default function EditProfileScreen() {
     </View>
   );
 }
+
+
+

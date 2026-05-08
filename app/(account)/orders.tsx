@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
 import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
 import { TabIcon } from "../../components/ui/home-ui";
+import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import {
@@ -15,9 +18,11 @@ import {
   formatMoney,
   getOrders,
   getPublishedProducts,
-  resolveMediaUrl,
+  isExplicitlyOutOfStock,
+  resolveProductCardImageUrl,
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 function OrdersTabIcon({ active }: { active: boolean }) {
   const color = active ? "#FF9F0A" : "#D4A04A";
@@ -36,17 +41,20 @@ function Star({
   active: boolean;
   onPress: () => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable onPress={onPress} className="px-1 py-1">
-      <Text className={`text-[24px] ${active ? "text-primary" : "text-[#BFBFBF]"}`}>★</Text>
+      <Text className={`text-[24px] ${active ? "text-primary" : ""}`} style={active ? undefined : { color: colors.textMuted }}>
+        ★
+      </Text>
     </Pressable>
   );
 }
 
-function BottomOrdersNav() {
+function BottomOrdersNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
   return (
     <View className="px-4 pb-4 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] bg-[#FAF5EF] px-7 py-4">
+      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
         <Pressable onPress={() => router.push("/(tabs)")}>
           <TabIcon routeName="index" color="#D4A04A" />
         </Pressable>
@@ -56,7 +64,7 @@ function BottomOrdersNav() {
         <Pressable onPress={() => router.push("/(tabs)/wishlist")}>
           <TabIcon routeName="wishlist" color="#D4A04A" />
         </Pressable>
-        <Pressable>
+        <Pressable onPress={() => router.push("/orders")}>
           <OrdersTabIcon active />
         </Pressable>
         <Pressable onPress={() => router.push("/(tabs)/profile")}>
@@ -83,66 +91,96 @@ type OrderRow = {
   productSize?: string | null;
 };
 
-function ItemArtwork({ imageUrl }: { imageUrl?: string | null }) {
+function ItemArtwork({
+  imageUrl,
+  colors,
+}: {
+  imageUrl?: string | null;
+  colors: ReturnType<typeof useAppTheme>["colors"];
+}) {
   return (
-    <View className="h-[92px] w-[92px] overflow-hidden bg-[#DCC6AA]">
-      {imageUrl ? <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" /> : null}
+    <View className="h-[92px] w-[92px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
     </View>
   );
 }
 
-function ActiveCard({ item, onTrack }: { item: OrderRow; onTrack: (item: OrderRow) => void }) {
+function ActiveCard({
+  item,
+  onTrack,
+  colors,
+}: {
+  item: OrderRow;
+  onTrack: (item: OrderRow) => void;
+  colors: ReturnType<typeof useAppTheme>["colors"];
+}) {
   return (
-    <View className="border-b border-[#D7D7D7] py-4">
+    <View className="border-b py-4" style={{ borderColor: colors.border }}>
       <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveMediaUrl(item.image)} />
+        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
         <View className="ml-3 flex-1">
-          <Text className="text-[15px] text-[#2D2D2D]">{item.name}</Text>
-          <Text className="mt-2 text-[15px] text-[#2D2D2D]">{formatMoney(item.price)}</Text>
+          <Text className="text-[15px]" style={{ color: colors.text }}>{item.name}</Text>
+          <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
         <Pressable onPress={() => onTrack(item)} className="rounded-full bg-primary px-4 py-2">
-          <Text className="text-[14px] text-white">Track Order</Text>
+          <Text className="text-[14px]" style={{ color: colors.background }}>Track Order</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-function CompletedCard({ item, onLeaveReview }: { item: OrderRow; onLeaveReview: (item: OrderRow) => void }) {
+function CompletedCard({
+  item,
+  onLeaveReview,
+  colors,
+}: {
+  item: OrderRow;
+  onLeaveReview: (item: OrderRow) => void;
+  colors: ReturnType<typeof useAppTheme>["colors"];
+}) {
   return (
-    <View className="border-b border-[#D7D7D7] py-4">
+    <View className="border-b py-4" style={{ borderColor: colors.border }}>
       <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveMediaUrl(item.image)} />
+        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
         <View className="ml-3 flex-1">
-          <Text className="text-[15px] text-[#2D2D2D]">{item.name}</Text>
-          <Text className="mt-2 text-[15px] text-[#2D2D2D]">{formatMoney(item.price)}</Text>
+          <Text className="text-[15px]" style={{ color: colors.text }}>{item.name}</Text>
+          <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
         <Pressable onPress={() => onLeaveReview(item)} className="rounded-full bg-primary px-4 py-2">
-          <Text className="text-[14px] text-white">Leave Review</Text>
+          <Text className="text-[14px]" style={{ color: colors.background }}>Leave Review</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-function CancelledCard({ item, onReorder }: { item: OrderRow; onReorder: (item: OrderRow) => void }) {
+function CancelledCard({
+  item,
+  onReorder,
+  colors,
+}: {
+  item: OrderRow;
+  onReorder: (item: OrderRow) => void;
+  colors: ReturnType<typeof useAppTheme>["colors"];
+}) {
   return (
-    <View className="border-b border-[#D7D7D7] py-4">
+    <View className="border-b py-4" style={{ borderColor: colors.border }}>
       <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveMediaUrl(item.image)} />
+        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
         <View className="ml-3 flex-1">
           <View className="flex-row items-center justify-between">
-            <Text className="text-[15px] text-[#2D2D2D]">{item.name}</Text>
-            <Text className="text-[15px] text-[#2D2D2D]">Order No:{item.orderNo}</Text>
+            <Text className="text-[15px]" style={{ color: colors.text }}>{item.name}</Text>
+            <Text className="text-[15px]" style={{ color: colors.text }}>Order No:{item.orderNo}</Text>
           </View>
           <View className="mt-1 self-start bg-primary px-2 py-0.5">
-            <Text className="text-[11px] font-semibold text-[#2D2D2D]">REFUNDED</Text>
+            <Text className="text-[11px] font-semibold" style={{ color: colors.background }}>REFUNDED</Text>
           </View>
-          <Text className="mt-1 text-[15px] text-[#3A3A3A]">On {item.date}</Text>
-          <Text className="mt-1 text-[15px] text-[#2D2D2D]">{formatMoney(item.price)}</Text>
+          <Text className="mt-1 text-[15px]" style={{ color: colors.textMuted }}>On {item.date}</Text>
+          <Text className="mt-1 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
         <Pressable onPress={() => onReorder(item)} className="rounded-full bg-primary px-4 py-2">
-          <Text className="text-[14px] text-white">Re - Order</Text>
+          <Text className="text-[14px]" style={{ color: colors.background }}>Re - Order</Text>
         </Pressable>
       </View>
     </View>
@@ -150,8 +188,11 @@ function CancelledCard({ item, onReorder }: { item: OrderRow; onReorder: (item: 
 }
 
 export default function OrdersScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"active" | "completed" | "cancelled">("active");
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
@@ -161,9 +202,9 @@ export default function OrdersScreen() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  async function loadOrders() {
+  async function loadOrders(showLoader = true) {
     try {
-      setIsLoading(true);
+      if (showLoader) setIsLoading(true);
       const [ordersData, productsData] = await Promise.all([getOrders(), getPublishedProducts()]);
       setOrders(ordersData);
       setProducts(productsData);
@@ -179,14 +220,15 @@ export default function OrdersScreen() {
       setProducts([]);
       setErrorText(getApiErrorMessage(error, "Unable to load orders right now."));
     } finally {
-      setIsLoading(false);
+      if (showLoader) setIsLoading(false);
+      setIsRefreshing(false);
     }
   }
 
   useEffect(() => {
     let mounted = true;
     async function bootstrap() {
-      await loadOrders();
+      await loadOrders(true);
       if (!mounted) return;
     }
     void bootstrap();
@@ -268,6 +310,10 @@ export default function OrdersScreen() {
     return map;
   }, [products]);
 
+  useEffect(() => {
+    prefetchImageUris(flattenedRows.map((row) => resolveProductCardImageUrl(row.image)), 20);
+  }, [flattenedRows]);
+
   async function handleTrackOrder(item: OrderRow) {
     router.push({
       pathname: "/order-track",
@@ -328,6 +374,10 @@ export default function OrdersScreen() {
       notifyError("Re-order failed", "Product could not be matched.");
       return;
     }
+    if (isExplicitlyOutOfStock(matched?.in_stock)) {
+      notifyError("Out of stock", "This product is out of stock.");
+      return;
+    }
 
     try {
       await addOrIncrementCartItemWithOptions({
@@ -346,12 +396,12 @@ export default function OrdersScreen() {
   const currentRows = tab === "active" ? activeRows : tab === "completed" ? completedRows : cancelledRows;
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center px-3 pt-3">
-        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View className="flex-row items-center px-3" style={{ paddingTop: Math.max(insets.top + 4, 12) }}>
+        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
           <BackIcon />
         </Pressable>
-        <Text className="flex-1 text-center text-[25px] font-medium text-[#2F2F2F]">My Orders</Text>
+        <Text className="flex-1 text-center text-[25px] font-medium" style={{ color: colors.text }}>My Orders</Text>
         <View className="w-8" />
       </View>
 
@@ -369,17 +419,29 @@ export default function OrdersScreen() {
                 onPress={() => setTab(t.key as typeof tab)}
                 className="flex-1 items-center pb-3"
               >
-                <Text className={`text-[17px] ${isActive ? "font-medium text-[#2D2D2D]" : "text-[#222222]"}`}>
+                <Text className={`text-[17px] ${isActive ? "font-medium" : ""}`} style={{ color: colors.text }}>
                   {t.label}
                 </Text>
-                {isActive ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full bg-[#D9D9D9]" />}
+                {isActive ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full" style={{ backgroundColor: colors.border }} />}
               </Pressable>
             );
           })}
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-4">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="flex-1 px-4"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadOrders(false);
+            }}
+          />
+        }
+      >
         <View className="pt-1">
           {isLoading ? (
             <View className="px-1">
@@ -387,28 +449,28 @@ export default function OrdersScreen() {
             </View>
           ) : errorText ? (
             <View className="items-center py-10">
-              <Text className="text-center text-[14px] text-[#777]">{errorText}</Text>
-              <Pressable onPress={() => void loadOrders()} className="mt-4 rounded-full bg-primary px-5 py-2.5">
-                <Text className="text-[13px] text-white">Retry</Text>
+              <Text className="text-center text-[14px]" style={{ color: colors.textMuted }}>{errorText}</Text>
+              <Pressable onPress={() => void loadOrders(true)} className="mt-4 rounded-full bg-primary px-5 py-2.5">
+                <Text className="text-[13px]" style={{ color: colors.background }}>Retry</Text>
               </Pressable>
             </View>
           ) : null}
           {!isLoading && currentRows.length === 0 ? (
             <View className="items-center py-10">
-              <Text className="text-[14px] text-[#777]">No {tab} orders yet.</Text>
+              <Text className="text-[14px]" style={{ color: colors.textMuted }}>No {tab} orders yet.</Text>
             </View>
           ) : null}
-          {!isLoading && tab === "active" && activeRows.map((item) => <ActiveCard key={item.id} item={item} onTrack={handleTrackOrder} />)}
-          {!isLoading && tab === "completed" && completedRows.map((item) => <CompletedCard key={item.id} item={item} onLeaveReview={handleLeaveReview} />)}
-          {!isLoading && tab === "cancelled" && cancelledRows.map((item) => <CancelledCard key={item.id} item={item} onReorder={handleReorder} />)}
+          {!isLoading && tab === "active" && activeRows.map((item) => <ActiveCard key={item.id} item={item} onTrack={handleTrackOrder} colors={colors} />)}
+          {!isLoading && tab === "completed" && completedRows.map((item) => <CompletedCard key={item.id} item={item} onLeaveReview={handleLeaveReview} colors={colors} />)}
+          {!isLoading && tab === "cancelled" && cancelledRows.map((item) => <CancelledCard key={item.id} item={item} onReorder={handleReorder} colors={colors} />)}
         </View>
       </ScrollView>
 
       <Modal transparent visible={reviewModalVisible} animationType="fade" onRequestClose={() => setReviewModalVisible(false)}>
         <View className="flex-1 items-center justify-center bg-black/35 px-5">
-          <View className="w-full max-w-[340px] rounded-[14px] bg-white p-4">
-            <Text className="text-[18px] font-medium text-[#2F2F2F]">Leave Review</Text>
-            <Text className="mt-1 text-[13px] text-[#666]">{reviewTarget?.name ?? "Product"}</Text>
+          <View className="w-full max-w-[340px] rounded-[14px] p-4" style={{ backgroundColor: colors.card }}>
+            <Text className="text-[18px] font-medium" style={{ color: colors.text }}>Leave Review</Text>
+            <Text className="mt-1 text-[13px]" style={{ color: colors.textMuted }}>{reviewTarget?.name ?? "Product"}</Text>
 
             <View className="mt-3 flex-row">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -420,20 +482,22 @@ export default function OrdersScreen() {
               value={reviewText}
               onChangeText={setReviewText}
               placeholder="Write your review..."
+              placeholderTextColor={colors.textMuted}
               multiline
               textAlignVertical="top"
-              className="mt-3 min-h-[90px] rounded-[10px] border border-[#DDD] px-3 py-2 text-[14px] text-[#2F2F2F]"
+              className="mt-3 min-h-[90px] rounded-[10px] border px-3 py-2 text-[14px]"
+              style={{ borderColor: colors.border, color: colors.text }}
             />
 
             <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable onPress={() => setReviewModalVisible(false)} className="rounded-[8px] border border-[#CCC] px-4 py-2">
-                <Text className="text-[14px] text-[#555]">Cancel</Text>
+              <Pressable onPress={() => setReviewModalVisible(false)} className="rounded-[8px] border px-4 py-2" style={{ borderColor: colors.border }}>
+                <Text className="text-[14px]" style={{ color: colors.textMuted }}>Cancel</Text>
               </Pressable>
               <Pressable onPress={handleSubmitReview} disabled={isSubmittingReview} className="rounded-[8px] bg-primary px-4 py-2">
                 {isSubmittingReview ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={colors.background} size="small" />
                 ) : (
-                  <Text className="text-[14px] text-white">Submit</Text>
+                  <Text className="text-[14px]" style={{ color: colors.background }}>Submit</Text>
                 )}
               </Pressable>
             </View>
@@ -441,7 +505,7 @@ export default function OrdersScreen() {
         </View>
       </Modal>
 
-      <BottomOrdersNav />
+      <BottomOrdersNav colors={colors} />
     </View>
   );
 }

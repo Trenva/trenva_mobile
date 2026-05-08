@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
 import { TabIcon } from "../../components/ui/home-ui";
@@ -8,6 +10,7 @@ import { fetchProfile } from "../../lib/api/auth";
 import { ApiCoupon, getCoupons, validateCouponCode } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 type Coupon = {
   id: number;
@@ -19,14 +22,14 @@ type Coupon = {
   statusTag?: "used" | "expired" | "used_expired";
 };
 
-function HelpIcon() {
+function HelpIcon({ color }: { color: string }) {
   return (
     <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={9.2} stroke="#2D2D2D" strokeWidth={1.9} />
-      <Path d="M12 17H12.01" stroke="#2D2D2D" strokeWidth={1.9} strokeLinecap="round" />
+      <Circle cx={12} cy={12} r={9.2} stroke={color} strokeWidth={1.9} />
+      <Path d="M12 17H12.01" stroke={color} strokeWidth={1.9} strokeLinecap="round" />
       <Path
         d="M9.5 9.8C9.9 8.6 10.9 8 12.1 8C13.5 8 14.4 8.8 14.4 10C14.4 10.9 13.9 11.4 13.1 11.9C12.4 12.4 12.1 12.9 12.1 13.8"
-        stroke="#2D2D2D"
+        stroke={color}
         strokeWidth={1.9}
         strokeLinecap="round"
       />
@@ -44,10 +47,10 @@ function OrdersTabIcon({ active }: { active: boolean }) {
   );
 }
 
-function BottomQuickNav() {
+function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
   return (
     <View className="px-4 pb-3 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] bg-[#FAF5EF] px-7 py-4">
+      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
         <Pressable onPress={() => router.push("/(tabs)")}>
           <TabIcon routeName="index" color="#D4A04A" />
         </Pressable>
@@ -111,7 +114,7 @@ function CouponCard({
         <View className="flex-row items-start justify-between">
           <View className="max-w-[72%]">
             <Text className="text-[16px] font-semibold text-white">{item.title}</Text>
-            <Text className="mt-1 text-[14px] text-[#1C1C1C] underline">{item.subtitle}</Text>
+            <Text className="mt-1 text-[14px] underline" style={{ color: "#1C1C1C" }}>{item.subtitle}</Text>
           </View>
           <Pressable
             onPress={onUse}
@@ -137,11 +140,14 @@ function CouponCard({
 }
 
 export default function CouponsScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"unused" | "expired">("unused");
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
   const [expiredCoupons, setExpiredCoupons] = useState<Coupon[]>([]);
   const [isApplying, setIsApplying] = useState(false);
   const [loadingCoupons, setLoadingCoupons] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>();
   const appliedCoupon = useCheckoutStore((state) => state.appliedCoupon);
   const setAppliedCoupon = useCheckoutStore((state) => state.setAppliedCoupon);
@@ -166,72 +172,73 @@ export default function CouponsScreen() {
     };
   }
 
+  async function loadCoupons(showLoader = true) {
+    if (showLoader) setLoadingCoupons(true);
+    try {
+      const profile = await fetchProfile();
+      const email = typeof profile?.email === "string" ? profile.email : undefined;
+      setUserEmail(email);
+
+      const allCoupons = await getCoupons();
+      const now = Date.now();
+      const available: Coupon[] = [];
+      const expired: Coupon[] = [];
+
+      const validations = await Promise.all(
+        allCoupons.map(async (coupon) => {
+          try {
+            const result = await validateCouponCode({
+              couponCode: coupon.coupon_code,
+              email,
+            });
+            return { coupon, result };
+          } catch (error: any) {
+            const message =
+              error?.response?.data?.message ||
+              error?.response?.data?.error ||
+              "validation_error";
+            return { coupon, result: { valid: false, message: String(message) } };
+          }
+        }),
+      );
+
+      validations.forEach(({ coupon, result }) => {
+        const msg = (result.message ?? "").toLowerCase();
+        const expiryMs = coupon.expiry_date ? new Date(coupon.expiry_date).getTime() : null;
+        const isExpiredByDate = typeof expiryMs === "number" && Number.isFinite(expiryMs) ? expiryMs < now : false;
+        const isExpiredByValidation = msg.includes("expired");
+        const isUsedByValidation = msg.includes("already been used");
+        const isUsageLimitReached = msg.includes("usage limit");
+        const isNotForUser = msg.includes("not valid for your account");
+
+        if (isNotForUser) return;
+
+        if (result.valid) {
+          available.push(mapCouponToCard(coupon));
+          return;
+        }
+
+        if (isExpiredByDate || isExpiredByValidation || isUsedByValidation || isUsageLimitReached) {
+          const card = mapCouponToCard(coupon);
+          const expiredFlag = isExpiredByDate || isExpiredByValidation;
+          const usedFlag = isUsedByValidation || isUsageLimitReached;
+          card.statusTag = expiredFlag && usedFlag ? "used_expired" : usedFlag ? "used" : "expired";
+          expired.push(card);
+        }
+      });
+
+      setAvailableCoupons(available);
+      setExpiredCoupons(expired);
+    } catch {
+      notifyError("Coupons unavailable", "You may not have permission yet. Ask backend to allow coupon list for users.");
+    } finally {
+      if (showLoader) setLoadingCoupons(false);
+      setIsRefreshing(false);
+    }
+  }
+
   useEffect(() => {
-    void (async () => {
-      setLoadingCoupons(true);
-      try {
-        const profile = await fetchProfile();
-        const email = typeof profile?.email === "string" ? profile.email : undefined;
-        setUserEmail(email);
-
-        const allCoupons = await getCoupons();
-        const now = Date.now();
-        const available: Coupon[] = [];
-        const expired: Coupon[] = [];
-
-        const validations = await Promise.all(
-          allCoupons.map(async (coupon) => {
-            try {
-              const result = await validateCouponCode({
-                couponCode: coupon.coupon_code,
-                email,
-              });
-              return { coupon, result };
-            } catch (error: any) {
-              const message =
-                error?.response?.data?.message ||
-                error?.response?.data?.error ||
-                "validation_error";
-              return { coupon, result: { valid: false, message: String(message) } };
-            }
-          }),
-        );
-
-        validations.forEach(({ coupon, result }) => {
-          const msg = (result.message ?? "").toLowerCase();
-          const expiryMs = coupon.expiry_date ? new Date(coupon.expiry_date).getTime() : null;
-          const isExpiredByDate = typeof expiryMs === "number" && Number.isFinite(expiryMs) ? expiryMs < now : false;
-          const isExpiredByValidation = msg.includes("expired");
-          const isUsedByValidation = msg.includes("already been used");
-          const isUsageLimitReached = msg.includes("usage limit");
-          const isNotForUser = msg.includes("not valid for your account");
-
-          // Show only coupons assigned/valid for current user.
-          if (isNotForUser) return;
-
-          if (result.valid) {
-            available.push(mapCouponToCard(coupon));
-            return;
-          }
-
-          // Expired tab should show both expired and used coupons.
-          if (isExpiredByDate || isExpiredByValidation || isUsedByValidation || isUsageLimitReached) {
-            const card = mapCouponToCard(coupon);
-            const expiredFlag = isExpiredByDate || isExpiredByValidation;
-            const usedFlag = isUsedByValidation || isUsageLimitReached;
-            card.statusTag = expiredFlag && usedFlag ? "used_expired" : usedFlag ? "used" : "expired";
-            expired.push(card);
-          }
-        });
-
-        setAvailableCoupons(available);
-        setExpiredCoupons(expired);
-      } catch {
-        notifyError("Coupons unavailable", "You may not have permission yet. Ask backend to allow coupon list for users.");
-      } finally {
-        setLoadingCoupons(false);
-      }
-    })();
+    void loadCoupons(true);
   }, []);
 
   async function applyCouponByCode(code: string) {
@@ -269,16 +276,17 @@ export default function CouponsScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center justify-between px-4 pt-3">
-        <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View
+        className="flex-row items-center justify-between px-4"
+        style={{ paddingTop: Math.max(insets.top + 4, 12) }}
+      >
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
           <BackIcon />
         </Pressable>
-        <Text className="text-center text-[24px] font-medium leading-8 text-[#2F2F2F]">
-          Trenva{"\n"}Coupons & Deals
-        </Text>
-        <Pressable className="h-8 w-8 items-center justify-center">
-          <HelpIcon />
+        <Text className="text-center text-[24px] font-medium leading-8" style={{ color: colors.text }}>Coupon</Text>
+        <Pressable onPress={() => router.push("/help-center")} className="h-8 w-8 items-center justify-center">
+          <HelpIcon color={colors.textMuted} />
         </Pressable>
       </View>
 
@@ -291,19 +299,31 @@ export default function CouponsScreen() {
             const active = tab === (t.key as typeof tab);
             return (
               <Pressable key={t.key} onPress={() => setTab(t.key as typeof tab)} className="flex-1 items-center pb-3">
-                <Text className="text-[17px] text-[#1F1F1F]">{t.label}</Text>
-                {active ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full bg-[#D9D9D9]" />}
+                <Text className="text-[17px]" style={{ color: colors.text }}>{t.label}</Text>
+                {active ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full" style={{ backgroundColor: colors.border }} />}
               </Pressable>
             );
           })}
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-4">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="flex-1 px-4"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadCoupons(false);
+            }}
+          />
+        }
+      >
         {tab === "unused" ? (
           <View className="mt-4">
-            <Text className="text-[17px] font-medium text-[#2F2F2F]">Available coupons</Text>
-            <Text className="mt-1 text-[14px] leading-6 text-[#2F2F2F]">Tap any available coupon to add it to checkout.</Text>
+            <Text className="text-[17px] font-medium" style={{ color: colors.text }}>Available coupons</Text>
+            <Text className="mt-1 text-[14px] leading-6" style={{ color: colors.text }}>Tap any available coupon to add it to checkout.</Text>
             {hasApplied ? <Text className="mt-2 text-[13px] text-[#0A7A28]">Added to checkout: {appliedCoupon?.code}</Text> : null}
           </View>
         ) : null}
@@ -311,18 +331,18 @@ export default function CouponsScreen() {
         <View className="mt-3">
           {tab === "expired" && !loadingCoupons && expiredCoupons.length === 0 ? (
             <View className="items-center py-12">
-              <Text className="text-[14px] text-[#777]">No expired coupons to show.</Text>
+              <Text className="text-[14px]" style={{ color: colors.textMuted }}>No expired coupons to show.</Text>
             </View>
           ) : null}
 
           {tab === "unused" && loadingCoupons ? (
             <View className="items-center py-10">
-              <ActivityIndicator color="#FF9B00" />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : null}
 
           {data.map((coupon) => (
-            <View key={coupon.id} className="border-t border-[#D7D7D7] pt-4">
+            <View key={coupon.id} className="border-t pt-4" style={{ borderColor: colors.border }}>
               <CouponCard
                 item={coupon}
                 expired={tab === "expired"}
@@ -337,7 +357,10 @@ export default function CouponsScreen() {
         </View>
       </ScrollView>
 
-      <BottomQuickNav />
+      <BottomQuickNav colors={colors} />
     </View>
   );
 }
+
+
+

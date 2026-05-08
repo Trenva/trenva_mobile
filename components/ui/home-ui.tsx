@@ -1,10 +1,21 @@
 import { Pressable, Text, View } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { fontStyles } from "../../lib/ui/typography";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 export function HomeTabBar({ state, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const { colors, mode } = useAppTheme();
   return (
-    <View className="bg-[#F7F7F3] px-4 pb-4 pt-1">
-      <View className="flex-row items-center justify-between rounded-t-[22px] rounded-b-[12px] bg-[#FAF5EF] px-7 py-5">
+    <View
+      className="px-0 pt-0"
+      style={{ paddingBottom: insets.bottom, backgroundColor: colors.background }}
+    >
+      <View
+        className="flex-row items-center justify-between px-3 py-1.5"
+        style={{ backgroundColor: mode === "dark" ? colors.card : "#FAF5EF" }}
+      >
         {state.routes.map((route: any, index: number) => {
           const focused = state.index === index;
           const color = focused ? "#FF9F0A" : "#D4A04A";
@@ -25,7 +36,8 @@ export function HomeTabBar({ state, navigation }: any) {
             <Pressable
               key={route.key}
               onPress={onPress}
-              className="items-center justify-center"
+              hitSlop={14}
+              className="min-h-[46px] min-w-[64px] items-center justify-center rounded-[10px] px-3 py-1.5"
             >
               <TabIcon routeName={route.name} color={color} />
             </Pressable>
@@ -49,18 +61,20 @@ export function SectionTitle({
   onPressViewAll?: () => void;
   hideViewAll?: boolean;
 }) {
+  const { colors } = useAppTheme();
   return (
     <View className="mb-4 mt-7 flex-row items-center justify-between px-4">
       <Text
-        className={`text-[15px] font-semibold ${
-          orange ? "text-primary" : "text-[#292D32]"
-        }`}
+        className="text-[15px] font-semibold"
+        style={[fontStyles.semibold, { color: orange ? colors.primary : colors.text }]}
       >
         {title}
       </Text>
       {hideViewAll ? null : (
         <Pressable className="flex-row items-center gap-1" onPress={onPressViewAll}>
-          <Text className="text-xs font-medium text-[#6B7280]">{viewAllLabel}</Text>
+          <Text className="text-xs font-medium" style={[fontStyles.medium, { color: colors.textMuted }]}>
+            {viewAllLabel}
+          </Text>
           <ChevronRightIcon />
         </Pressable>
       )}
@@ -82,11 +96,12 @@ export function LocationPinIcon() {
 }
 
 export function BellIcon() {
+  const { colors } = useAppTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M14 19C14 20.1046 13.1046 21 12 21C10.8954 21 10 20.1046 10 19M18 8C18 5.23858 15.3137 3 12 3C8.68629 3 6 5.23858 6 8V11.1056C6 11.8042 5.755 12.4808 5.30718 13.0172L4.17588 14.3754C3.56384 15.1109 4.08704 16.25 5.04482 16.25H18.9552C19.913 16.25 20.4362 15.1109 19.8241 14.3754L18.6928 13.0172C18.245 12.4808 18 11.8042 18 11.1056V8Z"
-        stroke="#6B7280"
+        stroke={colors.textMuted}
         strokeWidth={1.6}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -151,11 +166,12 @@ export function HeartFilledIcon({
 }
 
 export function ChevronRightIcon() {
+  const { colors } = useAppTheme();
   return (
     <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
       <Path
         d="M9 6L15 12L9 18"
-        stroke="#6B7280"
+        stroke={colors.textMuted}
         strokeWidth={1.8}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -164,21 +180,27 @@ export function ChevronRightIcon() {
   );
 }
 
-export function CouponIcon() {
+export function CouponIcon({
+  baseColor = "#FFB000",
+  accentColor = "#F32013",
+}: {
+  baseColor?: string;
+  accentColor?: string;
+}) {
   return (
     <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
       <Path
         d="M4 7.5C4 6.11929 5.11929 5 6.5 5H15.5858C16.2488 5 16.8847 5.26339 17.3536 5.73223L19.2678 7.64645C19.7366 8.11529 20 8.7512 20 9.41421V17.5C20 18.8807 18.8807 20 17.5 20H6.5C5.11929 20 4 18.8807 4 17.5V7.5Z"
-        fill="#FFB000"
+        fill={baseColor}
       />
-      <Circle cx={8} cy={9} r={1.2} fill="#F32013" />
+      <Circle cx={8} cy={9} r={1.2} fill={accentColor} />
       <Path
         d="M9 15L15 9"
-        stroke="#F32013"
+        stroke={accentColor}
         strokeWidth={1.8}
         strokeLinecap="round"
       />
-      <Circle cx={15.5} cy={15.5} r={1.2} fill="#F32013" />
+      <Circle cx={15.5} cy={15.5} r={1.2} fill={accentColor} />
     </Svg>
   );
 }

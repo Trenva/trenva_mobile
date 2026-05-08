@@ -1,6 +1,8 @@
-import { Image, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { SearchOrangeIcon } from "./general-ui";
+import { useAppTheme } from "../../lib/theme/theme-provider";
+import { CachedImage } from "./cached-image";
 
 export function CategorySearchBar({
   compact = false,
@@ -9,13 +11,15 @@ export function CategorySearchBar({
   compact?: boolean;
   onPress?: () => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
-      className={`${compact ? "mb-0" : "mb-6"} flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3`}
+      className={`${compact ? "mb-0" : "mb-6"} flex-row items-center rounded-[14px] border border-primary px-3 py-3`}
+      style={{ backgroundColor: colors.card }}
     >
       <SearchOrangeIcon />
-      <Text className="pl-3 text-[15px] text-[#98A2B3]">Search</Text>
+      <Text className="pl-3 text-[15px]" style={{ color: colors.textMuted }}>Search</Text>
     </Pressable>
   );
 }
@@ -97,7 +101,7 @@ export function CategoryTile({
     <Pressable onPress={onPress} className="mb-7 w-[31%] items-center">
       {imageUrl ? (
         <View className="h-[60px] w-[60px] overflow-hidden rounded-[10px]">
-          <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" />
+          <CachedImage uri={imageUrl} className="h-full w-full" />
         </View>
       ) : (
         <CategoryArtwork />
@@ -113,29 +117,34 @@ export function SubcategorySection({
   title,
   items,
   onPressItem,
+  onPressViewAll,
 }: {
   title: string;
   items: { label: string; emoji?: string; imageUrl?: string; levelTwoTitle?: string }[];
   onPressItem?: (item: { label: string; emoji?: string; imageUrl?: string; levelTwoTitle?: string }) => void;
+  onPressViewAll?: () => void;
 }) {
+  const { colors } = useAppTheme();
   return (
     <View className="mb-9">
       <View className="mb-5 flex-row items-center justify-between">
-        <Text className="text-[18px] font-medium text-[#303030]">{title}</Text>
-        <Text className="text-xs font-medium text-[#4B4B4B] underline">View All</Text>
+        <Text className="text-[18px] font-medium" style={{ color: colors.text }}>{title}</Text>
+        <Pressable onPress={onPressViewAll}>
+          <Text className="text-xs font-medium underline" style={{ color: colors.text }}>View All</Text>
+        </Pressable>
       </View>
 
       <View className="flex-row flex-wrap justify-between">
         {items.map((item) => (
           <Pressable key={item.label} className="mb-7 w-[30%] items-center" onPress={() => onPressItem?.(item)}>
-            <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-[10px] bg-[#F5F5F5]">
+            <View className="h-12 w-12 items-center justify-center overflow-hidden rounded-[10px]" style={{ backgroundColor: colors.elevated }}>
               {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} className="h-full w-full" resizeMode="cover" />
+                <CachedImage uri={item.imageUrl} className="h-full w-full" />
               ) : (
                 <Text className="text-[20px] font-semibold text-primary">{item.emoji ?? (item.label.charAt(0) || "C").toUpperCase()}</Text>
               )}
             </View>
-            <Text className="mt-2 text-center text-[12px] leading-[19px] text-[#333333]">
+            <Text className="mt-2 text-center text-[12px] leading-[19px]" style={{ color: colors.text }}>
               {item.label}
             </Text>
           </Pressable>
@@ -146,9 +155,10 @@ export function SubcategorySection({
 }
 
 export function AllProductsCard({ title }: { title: string }) {
+  const { colors } = useAppTheme();
   return (
-    <Pressable className="mb-8 mt-6 flex-row items-center justify-between rounded-xl border border-[#E8E8E8] bg-white px-4 py-3.5">
-      <Text className="text-[16px] font-semibold text-[#303030]">{title}</Text>
+    <Pressable className="mb-8 mt-6 flex-row items-center justify-between rounded-xl border px-4 py-3.5" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+      <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>{title}</Text>
       <ChevronGrayIcon />
     </Pressable>
   );

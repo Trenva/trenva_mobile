@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import { API_BASE_URL } from "./config";
+import { getCached, setCached } from "../cache/memory-cache";
 
 type PaginatedResponse<T> = {
   count: number;
@@ -8,9 +9,15 @@ type PaginatedResponse<T> = {
   results: T[];
 };
 
+export type ApiPage<T> = {
+  count: number;
+  next: string | null;
+  results: T[];
+};
+
 export type ApiProduct = {
   id?: number;
-  pid: string;
+  pid?: string;
   category?: string;
   subcategory?: string;
   leveltwocategory?: string;
@@ -20,7 +27,10 @@ export type ApiProduct = {
   description?: string | null;
   price?: string | number | null;
   old_price?: string | number | null;
-  in_stock?: boolean;
+  discount_percentage?: string | number | null;
+  in_stock?: boolean | string | number | null;
+  product_status?: string;
+  status?: boolean;
   featured?: boolean;
   promo?: boolean;
   average_rating?: number | string;
@@ -83,6 +93,8 @@ export type ApiFlashSaleProduct = {
     image?: string | null;
     price?: string | number | null;
     old_price?: string | number | null;
+    discount_percentage?: string | number | null;
+    in_stock?: boolean | string | number | null;
     promo?: boolean;
     product_status?: string;
   };
@@ -280,8 +292,20 @@ export type ApiWishlistItem = {
     image?: string | null;
     price?: string | number | null;
     old_price?: string | number | null;
+    discount_percentage?: string | number | null;
+    in_stock?: boolean | string | number | null;
   };
 };
+
+export function isExplicitlyOutOfStock(value: unknown) {
+  if (value === false) return true;
+  if (typeof value === "number") return value === 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "false" || normalized === "0" || normalized === "no" || normalized === "out_of_stock" || normalized === "out of stock";
+  }
+  return false;
+}
 
 export type ApiProductImage = {
   id: number;
@@ -292,9 +316,21 @@ export type ApiProductImage = {
 
 export type ApiVendor = {
   vid: string;
+  user?: number;
   name: string;
+  is_following?: boolean;
+  follower_count?: number;
   image?: string | null;
   verified?: boolean;
+  description?: string | null;
+  date?: string;
+  store_name?: string | null;
+  business_name?: string | null;
+  phone_number?: string | null;
+  address?: string | null;
+  category?: string | null;
+  chat_resp_time?: string | null;
+  shipping_on_time?: string | null;
   total_products?: number;
   total_orders?: number;
   total_revenue?: string | number | null;
@@ -323,6 +359,21 @@ function unwrapResults<T>(payload: T[] | PaginatedResponse<T>): T[] {
     return payload;
   }
   return payload.results ?? [];
+}
+
+function unwrapPage<T>(payload: T[] | PaginatedResponse<T>): ApiPage<T> {
+  if (Array.isArray(payload)) {
+    return {
+      count: payload.length,
+      next: null,
+      results: payload,
+    };
+  }
+  return {
+    count: Number(payload.count ?? 0),
+    next: payload.next ?? null,
+    results: payload.results ?? [],
+  };
 }
 
 async function fetchAllPages<T>(
@@ -360,12 +411,45 @@ function getApiOrigin() {
   }
 }
 
+function toThumbKey(value: string) {
+  // URI-safe and runtime-safe across RN/web without relying on btoa/polyfills.
+  return encodeURIComponent(value).replace(/%/g, "~");
+}
+
 export function resolveMediaUrl(path?: string | null) {
   if (!path) return undefined;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const origin = getApiOrigin();
   if (path.startsWith("/")) return `${origin}${path}`;
   return `${origin}/${path}`;
+}
+
+export function resolveMediaThumbUrl(
+  path?: string | null,
+  options?: { width?: number; height?: number; quality?: number; format?: "webp" | "jpeg" },
+) {
+  const source = resolveMediaUrl(path);
+  if (!source) return undefined;
+  const origin = getApiOrigin();
+  try {
+    const sourceUrl = new URL(source);
+    const originUrl = new URL(origin);
+    // Only proxy through media-thumb for same-origin media files.
+    // External hosts should be loaded directly.
+    if (sourceUrl.origin !== originUrl.origin) {
+      return source;
+    }
+  } catch {
+    // If parsing fails, fall back to direct source.
+    return source;
+  }
+  // Safety fallback: use direct source URL until thumbnail endpoint is confirmed live in deployment.
+  // Keeps rendering reliable even when backend route is missing.
+  return source;
+}
+
+export function resolveProductCardImageUrl(path?: string | null) {
+  return resolveMediaThumbUrl(path, { width: 420, quality: 72, format: "webp" }) ?? resolveMediaUrl(path);
 }
 
 export function formatMoney(value?: string | number | null) {
@@ -378,11 +462,71 @@ export async function getPublishedProducts() {
   return fetchAllPages<ApiProduct>("/api/products/", { product_status: "published" });
 }
 
+export async function getPublishedProductsPage(params?: {
+  page?: number;
+  nextUrl?: string | null;
+}) {
+  if (params?.nextUrl) {
+    const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(params.nextUrl);
+    return unwrapPage(response.data);
+  }
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>("/api/products/", {
+    params: {
+      product_status: "published",
+      page: params?.page ?? 1,
+    },
+  });
+  return unwrapPage(response.data);
+}
+
+function isPublishedProduct(product?: Partial<ApiProduct> | null) {
+  if (!product) return false;
+  const productStatus = String(product.product_status ?? "").toLowerCase();
+  if (productStatus && productStatus !== "published") return false;
+  if (typeof product.status === "boolean" && !product.status) return false;
+  return true;
+}
+
+function filterPublishedProducts(products: ApiProduct[]) {
+  return products.filter((product) => isPublishedProduct(product));
+}
+
+function filterPublishedFlashSaleProducts(items: ApiFlashSaleProduct[]) {
+  return items.filter((item) => isPublishedProduct(item.product_details));
+}
+
 export async function getFeaturedProducts() {
   const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(
     "/api/products/featured/",
+    {
+      params: {
+        product_status: "published",
+      },
+    },
   );
-  return unwrapResults(response.data);
+  return filterPublishedProducts(unwrapResults(response.data));
+}
+
+export async function getFeaturedProductsPage(params?: {
+  page?: number;
+  nextUrl?: string | null;
+}) {
+  if (params?.nextUrl) {
+    const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(params.nextUrl);
+    const page = unwrapPage(response.data);
+    return { ...page, results: filterPublishedProducts(page.results) };
+  }
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(
+    "/api/products/featured/",
+    {
+      params: {
+        product_status: "published",
+        page: params?.page ?? 1,
+      },
+    },
+  );
+  const page = unwrapPage(response.data);
+  return { ...page, results: filterPublishedProducts(page.results) };
 }
 
 export async function getSaleProducts() {
@@ -393,17 +537,27 @@ export async function getSaleProducts() {
 }
 
 export async function getSliders() {
-  return fetchAllPages<ApiSlider>("/api/sliders/");
+  const cacheKey = "public:sliders";
+  const cached = getCached<ApiSlider[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchAllPages<ApiSlider>("/api/sliders/");
+  setCached(cacheKey, data, 60_000);
+  return data;
 }
 
 export async function getFlashSales(params?: {
   active?: boolean;
   featured?: boolean;
 }) {
+  const cacheKey = `public:flash-sales:${String(params?.active)}:${String(params?.featured)}`;
+  const cached = getCached<ApiFlashSale[]>(cacheKey);
+  if (cached) return cached;
   const query: Record<string, string> = {};
   if (typeof params?.active === "boolean") query.is_active = String(params.active);
   if (typeof params?.featured === "boolean") query.featured = String(params.featured);
-  return fetchAllPages<ApiFlashSale>("/api/flash-sales/", query);
+  const data = await fetchAllPages<ApiFlashSale>("/api/flash-sales/", query);
+  setCached(cacheKey, data, 45_000);
+  return data;
 }
 
 export async function getFlashSaleProducts(params?: {
@@ -413,7 +567,35 @@ export async function getFlashSaleProducts(params?: {
   const query: Record<string, string | number> = {};
   if (typeof params?.active === "boolean") query.active = String(params.active);
   if (typeof params?.flashSaleId === "number") query.flash_sale = params.flashSaleId;
-  return fetchAllPages<ApiFlashSaleProduct>("/api/flash-sale-products/", query);
+  query.product_status = "published";
+  const rows = await fetchAllPages<ApiFlashSaleProduct>("/api/flash-sale-products/", query);
+  return filterPublishedFlashSaleProducts(rows);
+}
+
+export async function getFlashSaleProductsPage(params?: {
+  active?: boolean;
+  flashSaleId?: number;
+  page?: number;
+  nextUrl?: string | null;
+}) {
+  if (params?.nextUrl) {
+    const response = await apiClient.get<PaginatedResponse<ApiFlashSaleProduct> | ApiFlashSaleProduct[]>(
+      params.nextUrl,
+    );
+    const page = unwrapPage(response.data);
+    return { ...page, results: filterPublishedFlashSaleProducts(page.results) };
+  }
+  const query: Record<string, string | number> = {};
+  if (typeof params?.active === "boolean") query.active = String(params.active);
+  if (typeof params?.flashSaleId === "number") query.flash_sale = params.flashSaleId;
+  query.product_status = "published";
+  query.page = params?.page ?? 1;
+  const response = await apiClient.get<PaginatedResponse<ApiFlashSaleProduct> | ApiFlashSaleProduct[]>(
+    "/api/flash-sale-products/",
+    { params: query },
+  );
+  const page = unwrapPage(response.data);
+  return { ...page, results: filterPublishedFlashSaleProducts(page.results) };
 }
 
 export async function getHeuristicFlashSaleProducts() {
@@ -466,23 +648,54 @@ export async function getProductImagesByPid(pid: string) {
 }
 
 export async function getVendors() {
-  return fetchAllPages<ApiVendor>("/api/vendors/");
+  const cacheKey = "public:vendors";
+  const cached = getCached<ApiVendor[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchAllPages<ApiVendor>("/api/vendors/");
+  setCached(cacheKey, data, 2 * 60_000);
+  return data;
 }
 
 export async function getProductReviews(productId: number) {
   return fetchAllPages<ApiProductReview>("/api/reviews/", { product: productId });
 }
 
+export async function toggleVendorFollow(vendorId: string) {
+  const response = await apiClient.post<{
+    success: boolean;
+    is_following?: boolean;
+    follower_count?: number;
+    message?: string;
+    error?: string;
+  }>(`/api/vendors/${vendorId}/follow/`);
+  return response.data;
+}
+
 export async function getCategories() {
-  return fetchAllPages<ApiCategory>("/api/categories/");
+  const cacheKey = "public:categories";
+  const cached = getCached<ApiCategory[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchAllPages<ApiCategory>("/api/categories/");
+  setCached(cacheKey, data, 5 * 60_000);
+  return data;
 }
 
 export async function getSubcategories() {
-  return fetchAllPages<ApiSubCategory>("/api/subcategories/");
+  const cacheKey = "public:subcategories";
+  const cached = getCached<ApiSubCategory[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchAllPages<ApiSubCategory>("/api/subcategories/");
+  setCached(cacheKey, data, 5 * 60_000);
+  return data;
 }
 
 export async function getLevelTwoCategories() {
-  return fetchAllPages<ApiLevelTwoCategory>("/api/leveltwo-categories/");
+  const cacheKey = "public:leveltwo-categories";
+  const cached = getCached<ApiLevelTwoCategory[]>(cacheKey);
+  if (cached) return cached;
+  const data = await fetchAllPages<ApiLevelTwoCategory>("/api/leveltwo-categories/");
+  setCached(cacheKey, data, 5 * 60_000);
+  return data;
 }
 
 export async function getCartItems() {

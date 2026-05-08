@@ -16,6 +16,8 @@ type RegisterPayload = {
   bio: string;
   first_name?: string;
   last_name?: string;
+  phone?: string;
+  phone_number?: string;
 };
 
 type ChangePasswordPayload = {
@@ -28,6 +30,10 @@ export type UserProfile = {
   id?: number;
   username?: string;
   email?: string;
+  image?: string;
+  profile_image?: string;
+  avatar?: string;
+  photo?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
@@ -72,19 +78,19 @@ export async function checkEmailExists(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
 
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/check-email/`, {
-      params: { email: normalizedEmail },
-      timeout: 10000,
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/api/check-email/`,
+      { email: normalizedEmail },
+      { timeout: 10000 },
+    );
     const value = response.data as { exists?: boolean; email_exists?: boolean };
     return Boolean(value.exists ?? value.email_exists);
   } catch {
     try {
-      const response = await axios.post(
-        `${API_BASE_URL}/api/check-email/`,
-        { email: normalizedEmail },
-        { timeout: 10000 },
-      );
+      const response = await axios.get(`${API_BASE_URL}/api/check-email/`, {
+        params: { email: normalizedEmail },
+        timeout: 10000,
+      });
       const value = response.data as { exists?: boolean; email_exists?: boolean };
       return Boolean(value.exists ?? value.email_exists);
     } catch {

@@ -1,42 +1,73 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { applyProductFilters } from "../../lib/search/product-filters";
-import { formatMoney, getPublishedProducts, resolveMediaUrl, type ApiProduct } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
+import { CachedImage } from "../../components/ui/cached-image";
+import { useAppTheme } from "../../lib/theme/theme-provider";
+import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
 
 function normalize(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
 function ProductCard({ item }: { item: ApiProduct }) {
+  const { colors } = useAppTheme();
   const price = formatMoney(item.price);
-  const imageUrl = resolveMediaUrl(item.image);
+  const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
+  const discount = Number(item.discount_percentage ?? 0);
+  const isOutOfStock = isExplicitlyOutOfStock(item.in_stock);
+  const imageUrl = resolveProductCardImageUrl(item.image);
   return (
     <Pressable
       onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: String(item.id ?? item.pid), name: item.title, price } })}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] bg-white shadow-sm"
+      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card }}
     >
-      <View className="relative h-[112px] overflow-hidden bg-[#E8E8E8]">
-        {imageUrl ? <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" /> : null}
+      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+        {discount > 0 ? (
+          <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
+            <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
+          </View>
+        ) : null}
+        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {isOutOfStock ? (
+          <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
+            <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
+          </View>
+        ) : null}
         <View className="absolute right-3 top-3"><HeartOutlineIcon color="#FF9F0A" size={19} /></View>
       </View>
       <View className="px-2.5 pb-3 pt-3.5">
-        <Text numberOfLines={2} className="text-[12px] font-medium text-[#333333]">{item.title}</Text>
-        <Text className="mt-1 text-[14px] font-medium text-[#222222]">{price}</Text>
+        <Text numberOfLines={2} className="text-[12px] font-medium" style={{ color: colors.text }}>{item.title}</Text>
+        <View className="mt-1 flex-row items-center gap-1">
+          <Text className="text-[15px] font-medium" style={{ color: colors.text }}>{price}</Text>
+          {oldPrice && oldPrice !== price ? (
+            <Text className="text-[11px] line-through" style={{ color: colors.textMuted }}>{oldPrice}</Text>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
 }
 
 export default function SubcategoryProductsScreen() {
+  const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const contentMaxWidth = width >= 900 ? 980 : undefined;
   const { category, subcategory } = useLocalSearchParams<{ category?: string; subcategory?: string }>();
   const categoryTitle = (category ?? "Category").trim();
   const subcategoryTitle = (subcategory ?? "Subcategory").trim();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const filters = useProductFilterStore();
   const resetFilters = useProductFilterStore((state) => state.resetFilters);
@@ -45,32 +76,59 @@ export default function SubcategoryProductsScreen() {
     resetFilters();
   }, [categoryTitle, subcategoryTitle, resetFilters]);
 
-  useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      try {
-        const rows = await getPublishedProducts();
-        if (!isMounted) return;
-        setProducts(
-          rows.filter(
-            (p) =>
-              normalize(p.category) === normalize(categoryTitle) &&
-              normalize(p.subcategory) === normalize(subcategoryTitle),
-          ),
-        );
-      } catch {
-        if (!isMounted) return;
-        setProducts([]);
-        notifyError("Subcategory failed", "Unable to load subcategory products right now.");
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
+  const loadInitial = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const page = await getPublishedProductsPage({ page: 1 });
+      setProducts(
+        page.results.filter(
+          (p) =>
+            normalize(p.category) === normalize(categoryTitle) &&
+            normalize(p.subcategory) === normalize(subcategoryTitle),
+        ),
+      );
+      setNextUrl(page.next);
+    } catch {
+      setProducts([]);
+      setNextUrl(null);
+      notifyError("Subcategory failed", "Unable to load subcategory products right now.");
+    } finally {
+      setIsLoading(false);
     }
-    void load();
-    return () => {
-      isMounted = false;
-    };
   }, [categoryTitle, subcategoryTitle]);
+
+  useEffect(() => {
+    void loadInitial();
+  }, [loadInitial]);
+
+  async function loadMore() {
+    if (!nextUrl || isLoadingMore || isLoading) return;
+    try {
+      setIsLoadingMore(true);
+      const page = await getPublishedProductsPage({ nextUrl });
+      setProducts((prev) => [
+        ...prev,
+        ...page.results.filter(
+          (p) =>
+            normalize(p.category) === normalize(categoryTitle) &&
+            normalize(p.subcategory) === normalize(subcategoryTitle),
+        ),
+      ]);
+      setNextUrl(page.next);
+    } catch {
+      notifyError("Load failed", "Unable to load more products.");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  function handleScroll(event: any) {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+    if (remaining < 180) {
+      void loadMore();
+    }
+  }
 
   const filteredProducts = useMemo(
     () =>
@@ -85,9 +143,27 @@ export default function SubcategoryProductsScreen() {
   );
 
   return (
-    <View className="flex-1 bg-white">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <View className="px-4 pt-3">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0, 1]}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadInitial().finally(() => setIsRefreshing(false));
+            }}
+          />
+        }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <View
+          className="px-4 pb-2"
+          style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
+        >
           <View className="mb-3 flex-row items-center justify-between">
             <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}><BackIcon /></Pressable>
             <View className="flex-row items-center gap-4">
@@ -95,11 +171,13 @@ export default function SubcategoryProductsScreen() {
               <BellDarkIcon />
             </View>
           </View>
+        </View>
 
-          <View className="mt-4 flex-row items-center justify-between">
+        <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", backgroundColor: colors.background }} className="px-4 pb-4 pt-2">
+          <View className="flex-row items-center justify-between">
             <View>
-              <Text className="text-[13px] text-[#888888]">{categoryTitle}</Text>
-              <Text className="text-[26px] font-medium text-[#303030]">{subcategoryTitle}</Text>
+              <Text className="text-[12px]" style={{ color: colors.textMuted }}>{categoryTitle}</Text>
+              <Text numberOfLines={2} className="text-[21px] font-semibold" style={{ color: colors.text }}>{subcategoryTitle}</Text>
             </View>
             <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
               <Text className="text-[12px] font-semibold text-primary">Filter</Text>
@@ -107,18 +185,29 @@ export default function SubcategoryProductsScreen() {
           </View>
         </View>
 
-        <View className="px-4 pt-6">
+        <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-6">
           {isLoading ? (
-            <View className="items-center py-12"><ActivityIndicator color="#FF9B00" /></View>
+            <View className="py-4"><LoadingListSkeleton rows={3} /></View>
           ) : filteredProducts.length === 0 ? (
-            <Text className="py-12 text-center text-[14px] text-[#737373]">No products available right now.</Text>
+            <View className="py-12">
+              <Text className="text-center text-[14px]" style={{ color: colors.textMuted }}>No products available right now.</Text>
+              <Pressable onPress={() => router.push("/categories")} className="mt-5 self-center rounded-full bg-primary px-6 py-3">
+                <Text className="text-[13px] font-semibold text-white">Explore Products</Text>
+              </Pressable>
+            </View>
           ) : (
             <View className="flex-row flex-wrap justify-between">
               {filteredProducts.map((item) => <ProductCard key={String(item.id ?? item.pid)} item={item} />)}
             </View>
           )}
+          {isLoadingMore ? (
+            <View className="items-center py-4">
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </View>
   );
 }
+

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { type ApiAddress, getAddresses, setDefaultAddress } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 function LocationPinDarkIcon() {
   return (
@@ -22,13 +25,16 @@ function LocationPinDarkIcon() {
 }
 
 export default function AddressScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [addresses, setAddresses] = useState<ApiAddress[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const setSelectedAddress = useCheckoutStore((state) => state.setSelectedAddress);
 
-  async function loadAddresses() {
-    setIsLoading(true);
+  async function loadAddresses(showLoader = true) {
+    if (showLoader) setIsLoading(true);
     try {
       const response = await getAddresses();
       setAddresses(response);
@@ -38,17 +44,18 @@ export default function AddressScreen() {
       setAddresses([]);
       setSelected(null);
     } finally {
-      setIsLoading(false);
+      if (showLoader) setIsLoading(false);
+      setIsRefreshing(false);
     }
   }
 
   useEffect(() => {
-    void loadAddresses();
+    void loadAddresses(true);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void loadAddresses();
+      void loadAddresses(true);
     }, []),
   );
 
@@ -75,33 +82,48 @@ export default function AddressScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
-        <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View
+        className="flex-row items-center justify-between px-4 pb-2"
+        style={{ paddingTop: Math.max(insets.top + 4, 12) }}
+      >
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
           <BackIcon />
         </Pressable>
-        <Text className="text-[24px] font-medium text-[#2F2F2F]">Address</Text>
+        <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Address</Text>
         <BellDarkIcon />
       </View>
 
       <View className="px-5">
         <View className="mb-5 mt-1 flex-row gap-2">
           <View className="h-[4px] flex-1 rounded-full bg-primary" />
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} className="flex-1 px-5">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="flex-1 px-5"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadAddresses(false);
+            }}
+          />
+        }
+      >
         {isLoading ? (
           <View className="items-center py-10">
-            <ActivityIndicator color="#FF9B00" />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : null}
 
         {!isLoading && addresses.length === 0 ? (
           <View className="py-6">
-            <Text className="text-[14px] text-[#8B8B8B]">No saved address found yet.</Text>
+            <Text className="text-[14px]" style={{ color: colors.textMuted }}>No saved address found yet.</Text>
           </View>
         ) : null}
 
@@ -119,7 +141,8 @@ export default function AddressScreen() {
             <Pressable
               key={String(address.id)}
               onPress={() => setSelected(String(address.id))}
-              className="border-b border-[#CFCFCF] py-4"
+              className="border-b py-4"
+              style={{ borderColor: colors.border }}
             >
               <View className="flex-row items-start justify-between">
                 <View className="flex-row gap-3">
@@ -127,13 +150,13 @@ export default function AddressScreen() {
                     <LocationPinDarkIcon />
                   </View>
                   <View>
-                    <Text className="text-[16px] font-medium text-[#2E2E2E]">{title}</Text>
-                    <Text className="mt-0.5 text-[12px] leading-5 text-[#A0A0A0]">{line || "No address line available"}</Text>
+                    <Text className="text-[16px] font-medium" style={{ color: colors.text }}>{title}</Text>
+                    <Text className="mt-0.5 text-[12px] leading-5" style={{ color: colors.textMuted }}>{line || "No address line available"}</Text>
                   </View>
                 </View>
 
                 <View className="pt-1">
-                  <View className={`h-6 w-6 rounded-full border-2 ${active ? "border-primary" : "border-[#D6A85A]"}`}>
+                  <View className="h-6 w-6 rounded-full border-2" style={{ borderColor: active ? colors.primary : colors.border }}>
                     {active ? <View className="m-[4px] h-3 w-3 rounded-full bg-primary" /> : null}
                   </View>
                 </View>
@@ -155,3 +178,6 @@ export default function AddressScreen() {
     </View>
   );
 }
+
+
+

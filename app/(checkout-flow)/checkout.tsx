@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { Linking } from "react-native";
 import { router } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
+import { CachedImage } from "../../components/ui/cached-image";
 import { fetchProfile } from "../../lib/api/auth";
 import {
   formatMoney,
@@ -17,6 +20,7 @@ import {
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 function CardIcon() {
   return (
@@ -29,6 +33,8 @@ function CardIcon() {
 }
 
 export default function CheckoutScreen() {
+  const { colors, mode } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const selectedAddress = useCheckoutStore((state) => state.selectedAddress);
   const selectedPaymentMethod = useCheckoutStore((state) => state.selectedPaymentMethod);
   const setLastOrderId = useCheckoutStore((state) => state.setLastOrderId);
@@ -39,6 +45,7 @@ export default function CheckoutScreen() {
   const [isVerifyingPaystack, setIsVerifyingPaystack] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [cartSnapshot, setCartSnapshot] = useState<{
     items: Awaited<ReturnType<typeof getCartItems>>;
     totalItems: number;
@@ -57,19 +64,23 @@ export default function CheckoutScreen() {
       : 0;
   const payableTotal = Math.max(0, rawTotal - couponDiscount);
 
+  async function loadCheckoutSnapshot() {
+    try {
+      const [items, total] = await Promise.all([getCartItems(), getCartTotal()]);
+      setCartSnapshot({
+        items,
+        totalItems: total.total_items ?? items.length,
+        totalPrice: Number(total.total_price ?? 0),
+      });
+    } catch {
+      setCartSnapshot({ items: [], totalItems: 0, totalPrice: 0 });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   useEffect(() => {
-    void (async () => {
-      try {
-        const [items, total] = await Promise.all([getCartItems(), getCartTotal()]);
-        setCartSnapshot({
-          items,
-          totalItems: total.total_items ?? items.length,
-          totalPrice: Number(total.total_price ?? 0),
-        });
-      } catch {
-        setCartSnapshot({ items: [], totalItems: 0, totalPrice: 0 });
-      }
-    })();
+    void loadCheckoutSnapshot();
   }, []);
 
   async function handleMakePayment() {
@@ -215,67 +226,79 @@ export default function CheckoutScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#F7F7F7]">
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
-        <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <View
+        className="flex-row items-center justify-between px-4 pb-2"
+        style={{ paddingTop: Math.max(insets.top + 4, 12) }}
+      >
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
           <BackIcon />
         </Pressable>
-        <Text className="text-[24px] font-medium text-[#2F2F2F]">Check out</Text>
+        <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Check out</Text>
         <BellDarkIcon />
       </View>
 
       <View className="px-5">
         <View className="mb-7 mt-1 flex-row gap-2">
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
-          <View className="h-[4px] flex-1 rounded-full bg-[#EAEAEA]" />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
+          <View className="h-[4px] flex-1 rounded-full" style={{ backgroundColor: colors.border }} />
           <View className="h-[4px] flex-1 rounded-full bg-primary" />
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} className="px-4">
-        <Text className="text-[16px] font-medium text-[#343434]">Order Review</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="px-4"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadCheckoutSnapshot();
+            }}
+          />
+        }
+      >
+        <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Order Review</Text>
 
-        <View className="mt-2 flex-row items-center bg-[#F2F2F2] px-3 py-2">
-          <View className="h-[78px] w-[92px] overflow-hidden bg-[#D5D5D5]">
+        <View className="mt-2 flex-row items-center px-3 py-2" style={{ backgroundColor: colors.elevated }}>
+          <View className="h-[78px] w-[92px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
             {firstCartItem?.product_image ? (
-              <Image
-                source={{ uri: resolveMediaUrl(firstCartItem.product_image) }}
-                className="h-full w-full"
-                resizeMode="cover"
-              />
+              <CachedImage uri={resolveMediaUrl(firstCartItem.product_image)!} className="h-full w-full" />
             ) : null}
           </View>
           <View className="ml-2 flex-1">
-            <Text className="text-[16px] text-[#2F2F2F]">{firstCartItem?.product_name ?? "Cart item"}</Text>
-            <Text className="mt-2 text-[24px] text-[#2F2F2F]">{formatMoney(firstCartItem?.product_price)}</Text>
+            <Text className="text-[16px]" style={{ color: colors.text }}>{firstCartItem?.product_name ?? "Cart item"}</Text>
+            <Text className="mt-2 text-[24px]" style={{ color: colors.text }}>{formatMoney(firstCartItem?.product_price)}</Text>
           </View>
         </View>
 
         <View className="mt-5 flex-row items-center justify-between">
-          <Text className="text-[16px] font-medium text-[#343434]">Deliver to</Text>
+          <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Deliver to</Text>
           <Pressable onPress={() => router.push("/address")}>
-            <Text className="text-[13px] text-[#333333] underline">Edit</Text>
+            <Text className="text-[13px] underline" style={{ color: colors.text }}>Edit</Text>
           </Pressable>
         </View>
-        <View className="mt-2 border border-[#E4E4E4] bg-white px-3 py-3 shadow-sm">
-          <Text className="text-[16px] text-[#2F2F2F]">
+        <View className="mt-2 px-3 py-3 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+          <Text className="text-[16px]" style={{ color: colors.text }}>
             {[selectedAddress?.first_name, selectedAddress?.last_name].filter(Boolean).join(" ").trim() || "Selected address"}
           </Text>
-          <Text className="text-[13px] text-[#9E9E9E]">
+          <Text className="text-[13px]" style={{ color: colors.textMuted }}>
             {[selectedAddress?.address, selectedAddress?.city, selectedAddress?.state, selectedAddress?.postal]
               .filter(Boolean)
               .join(", ")}
           </Text>
         </View>
         <View className="mt-2 flex-row items-center gap-2">
-          <View className="flex-1 rounded-xl border border-[#D0D0D0] bg-white px-3">
+          <View className="flex-1 rounded-xl border px-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
             <TextInput
               value={couponInput}
               onChangeText={setCouponInput}
               autoCapitalize="characters"
               placeholder="Enter coupon code"
-              placeholderTextColor="#8B8B8B"
-              className="py-3 text-[14px] text-[#2F2F2F]"
+              placeholderTextColor={colors.textMuted}
+              className="py-3 text-[14px]"
+              style={{ color: colors.text }}
             />
           </View>
           <Pressable
@@ -292,60 +315,60 @@ export default function CheckoutScreen() {
         </View>
 
         <View className="mt-5 flex-row items-center justify-between">
-          <Text className="text-[16px] font-medium text-[#343434]">Payment method</Text>
+          <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Payment method</Text>
           <Pressable onPress={() => router.push("/payments")}>
-            <Text className="text-[13px] text-[#333333] underline">Edit</Text>
+            <Text className="text-[13px] underline" style={{ color: colors.text }}>Edit</Text>
           </Pressable>
         </View>
-        <View className="mt-2 flex-row items-center gap-3 border border-[#E4E4E4] bg-white px-3 py-4 shadow-sm">
+        <View className="mt-2 flex-row items-center gap-3 px-3 py-4 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
           <CardIcon />
-          <Text className="text-[16px] text-[#2F2F2F]">{selectedPaymentMethod.replaceAll("_", " ")}</Text>
+          <Text className="text-[16px]" style={{ color: colors.text }}>{selectedPaymentMethod.replaceAll("_", " ")}</Text>
         </View>
 
         <View className="mt-5 flex-row items-center justify-between">
-          <Text className="text-[16px] font-medium text-[#343434]">Coupon</Text>
+          <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Coupon</Text>
           <Pressable onPress={() => router.push("/coupons")}>
-            <Text className="text-[13px] text-[#333333] underline">
+            <Text className="text-[13px] underline" style={{ color: colors.text }}>
               {appliedCoupon ? "Change Coupon" : "Choose Coupon"}
             </Text>
           </Pressable>
         </View>
-        <View className="mt-2 border border-[#E4E4E4] bg-white px-3 py-3 shadow-sm">
+        <View className="mt-2 px-3 py-3 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
           {appliedCoupon ? (
             <>
-              <Text className="text-[15px] font-medium text-[#2F2F2F]">Selected coupon: {appliedCoupon.code}</Text>
+              <Text className="text-[15px] font-medium" style={{ color: colors.text }}>Selected coupon: {appliedCoupon.code}</Text>
               {!couponEligible ? (
-                <Text className="mt-1 text-[12px] text-[#9A5C00]">
+                <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>
                   Requires minimum order of {formatMoney(couponMinimumOrder)}
                 </Text>
               ) : null}
             </>
           ) : (
-            <Text className="text-[14px] text-[#9E9E9E]">No coupon selected</Text>
+            <Text className="text-[14px]" style={{ color: colors.textMuted }}>No coupon selected</Text>
           )}
         </View>
 
-        <View className="mt-4 border-t border-[#D5D5D5] pt-3">
-          <Text className="text-[16px] font-medium text-[#343434]">Price Details</Text>
+        <View className="mt-4 border-t pt-3" style={{ borderColor: colors.border }}>
+          <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Price Details</Text>
           <View className="mt-4 gap-2">
             <View className="flex-row items-center justify-between">
-              <Text className="text-[16px] text-[#343434]">Price ({cartSnapshot?.totalItems ?? 0} Items)</Text>
-              <Text className="text-[16px] text-[#343434]">{formatMoney(rawTotal)}</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>Price ({cartSnapshot?.totalItems ?? 0} Items)</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>{formatMoney(rawTotal)}</Text>
             </View>
             <View className="flex-row items-center justify-between">
-              <Text className="text-[16px] text-[#343434]">Discount</Text>
-              <Text className="text-[16px] text-[#343434]">{formatMoney(couponDiscount)}</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>Discount</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>{formatMoney(couponDiscount)}</Text>
             </View>
             <View className="flex-row items-center justify-between">
-              <Text className="text-[16px] text-[#343434]">Delivery Charges</Text>
-              <Text className="text-[16px] text-[#343434]">{formatMoney(0)}</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>Delivery Charges</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>{formatMoney(0)}</Text>
             </View>
           </View>
 
-          <View className="mt-4 border-t border-[#8E8E8E] pt-3">
+          <View className="mt-4 border-t pt-3" style={{ borderColor: mode === "dark" ? colors.border : "#8E8E8E" }}>
             <View className="flex-row items-center justify-between">
-              <Text className="text-[18px] font-medium text-[#2F2F2F]">Total Amount</Text>
-              <Text className="text-[18px] font-medium text-[#2F2F2F]">{formatMoney(payableTotal)}</Text>
+              <Text className="text-[18px] font-medium" style={{ color: colors.text }}>Total Amount</Text>
+              <Text className="text-[18px] font-medium" style={{ color: colors.text }}>{formatMoney(payableTotal)}</Text>
             </View>
           </View>
         </View>
@@ -359,9 +382,9 @@ export default function CheckoutScreen() {
             )}
           </Pressable>
           {selectedPaymentMethod === "paystack" && paystackReference ? (
-            <Pressable onPress={handleVerifyPaystack} disabled={isVerifyingPaystack} className="mt-3 rounded-full border border-primary bg-white py-3.5">
+            <Pressable onPress={handleVerifyPaystack} disabled={isVerifyingPaystack} className="mt-3 rounded-full border border-primary py-3.5" style={{ backgroundColor: colors.card }}>
               {isVerifyingPaystack ? (
-                <ActivityIndicator color="#FF9B00" />
+                <ActivityIndicator color={colors.primary} />
               ) : (
                 <Text className="text-center text-[15px] font-medium text-primary">Verify Payment</Text>
               )}
@@ -372,3 +395,6 @@ export default function CheckoutScreen() {
     </View>
   );
 }
+
+
+

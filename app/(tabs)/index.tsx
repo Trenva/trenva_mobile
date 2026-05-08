@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Location from "expo-location";
 import {
   BellIcon,
   CouponIcon,
@@ -18,10 +19,13 @@ import {
   type ApiSlider,
   formatMoney,
   getCategories,
-  getFeaturedProducts,
-  getFlashSaleProducts,
+  getFeaturedProductsPage,
+  getFlashSaleProductsPage,
   getFlashSales,
+  isExplicitlyOutOfStock,
   getPublishedProducts,
+  getPublishedProductsPage,
+  resolveProductCardImageUrl,
   getSliders,
   getWishlistItems,
   getWishlistProductId,
@@ -30,6 +34,10 @@ import {
 } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
+import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
+import { fontStyles } from "../../lib/ui/typography";
+import { useAppTheme } from "../../lib/theme/theme-provider";
+import { HomeFeedSkeleton } from "../../components/ui/loading-skeleton";
 
 type ProductCardItem = {
   productId?: number;
@@ -37,8 +45,33 @@ type ProductCardItem = {
   name: string;
   categoryKey?: string;
   price: string;
+  oldPrice?: string;
+  discountPercentage?: number;
+  inStock?: unknown;
   imageUrl?: string;
 };
+
+function getSaleRemainingSeconds(sale?: { remaining_time?: { days?: number; hours?: number; minutes?: number; seconds?: number; expired?: boolean } }) {
+  const remaining = sale?.remaining_time;
+  if (!remaining || remaining.expired) return 0;
+  const days = Number(remaining.days ?? 0);
+  const hours = Number(remaining.hours ?? 0);
+  const minutes = Number(remaining.minutes ?? 0);
+  const seconds = Number(remaining.seconds ?? 0);
+  return Math.max(0, days * 86400 + hours * 3600 + minutes * 60 + seconds);
+}
+
+function formatCountdown(totalSeconds?: number | null) {
+  if (!totalSeconds || totalSeconds <= 0) return "Ended";
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return days > 0 ? `${days}d ${hh}h : ${mm}m : ${ss}s` : `${hh}h : ${mm}m : ${ss}s`;
+}
 
 function mapProductToCard(product: ApiProduct): ProductCardItem {
   return {
@@ -47,20 +80,35 @@ function mapProductToCard(product: ApiProduct): ProductCardItem {
     name: product.title ?? "Product",
     categoryKey: String(product.category ?? "").toLowerCase(),
     price: formatMoney(product.price),
-    imageUrl: resolveMediaUrl(product.image),
+    oldPrice: product.old_price ? formatMoney(product.old_price) : undefined,
+    discountPercentage: Number(product.discount_percentage ?? 0) || undefined,
+    inStock: product.in_stock,
+    imageUrl: resolveProductCardImageUrl(product.image),
   };
 }
 
-function mapFlashSaleProductToCard(item: ApiFlashSaleProduct): ProductCardItem | null {
+function mapFlashSaleProductToCard(
+  item: ApiFlashSaleProduct,
+  stockByProductKey?: Map<string, unknown>,
+): ProductCardItem | null {
   const details = item.product_details;
   if (!details) return null;
   const priceValue = item.flash_sale_price ?? item.effective_price ?? details.price ?? 0;
+  const detailIdKey = typeof details.id === "number" ? `id:${details.id}` : null;
+  const detailPidKey = details.pid ? `pid:${String(details.pid)}` : null;
+  const rawInStock =
+    details.in_stock ??
+    (detailIdKey ? stockByProductKey?.get(detailIdKey) : undefined) ??
+    (detailPidKey ? stockByProductKey?.get(detailPidKey) : undefined);
   return {
     productId: typeof details.id === "number" ? details.id : item.product,
     slug: String(details.id ?? details.pid ?? item.product),
     name: details.title ?? "Flash Sale Product",
     price: formatMoney(priceValue),
-    imageUrl: resolveMediaUrl(details.image),
+    oldPrice: details.old_price ? formatMoney(details.old_price) : undefined,
+    discountPercentage: Number(details.discount_percentage ?? 0) || undefined,
+    inStock: rawInStock,
+    imageUrl: resolveProductCardImageUrl(details.image),
   };
 }
 
@@ -75,6 +123,10 @@ function PromoCard({
   wishlisted: boolean;
   onToggleWishlist: (item: ProductCardItem) => void;
 }) {
+  const { colors } = useAppTheme();
+  const hasOldPrice = Boolean(item.oldPrice && item.oldPrice !== item.price);
+  const discount = Number(item.discountPercentage ?? 0);
+  const isOutOfStock = isExplicitlyOutOfStock(item.inStock);
   return (
     <Pressable
       onPress={() =>
@@ -83,35 +135,60 @@ function PromoCard({
           params: { slug: item.slug, name: item.name, price: item.price },
         })
       }
-      className={`rounded-[6px] bg-white ${compact ? "mr-2 w-[140px]" : "w-[168px]"}`}
+      className={`rounded-[6px] ${compact ? "mr-2 w-[140px]" : "w-[168px]"}`}
+      style={{ backgroundColor: colors.card }}
     >
-      <View className={`relative overflow-hidden rounded-t-[6px] bg-[#EAEAEA] ${compact ? "h-[110px]" : "h-[122px]"}`}>
-        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} className="h-full w-full" resizeMode="cover" /> : null}
+      <View className={`relative overflow-hidden rounded-t-[6px] ${compact ? "h-[110px]" : "h-[122px]"}`} style={{ backgroundColor: colors.elevated }}>
+        {discount > 0 ? (
+          <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
+            <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
+          </View>
+        ) : null}
+        {item.imageUrl ? <CachedImage uri={item.imageUrl} className="h-full w-full" /> : null}
+        {isOutOfStock ? (
+          <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
+            <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
+          </View>
+        ) : null}
         <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)}>
           {wishlisted ? <HeartFilledIcon /> : <HeartOutlineIcon />}
         </Pressable>
       </View>
-      <View className="border-x border-b border-[#EFEFEF] px-1.5 pb-2 pt-3">
-        <Text numberOfLines={1} className="text-[11px] font-semibold text-[#4B4B4B]">
+      <View className="border-x border-b px-1.5 pb-2 pt-3" style={{ borderColor: colors.border }}>
+        <Text numberOfLines={1} className="text-[11px] font-semibold" style={[fontStyles.semibold, { color: colors.text }]}>
           {item.name}
         </Text>
-        <Text className="mt-1 text-[10px] font-bold text-[#4B4B4B]">{item.price}</Text>
+        <View className="mt-1 flex-row items-center gap-1">
+          <Text className="text-[12px] font-bold" style={[fontStyles.bold, { color: colors.text }]}>
+            {item.price}
+          </Text>
+          {hasOldPrice ? (
+            <Text className="text-[9px] line-through" style={{ color: colors.textMuted }}>
+              {item.oldPrice}
+            </Text>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
 }
 
 function CategoryChip({ title, imageUrl, onPress }: { title: string; imageUrl?: string; onPress?: () => void }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable className="mr-4 items-center" onPress={onPress}>
-      <View className="h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-full bg-[#F7F1EA]">
+      <View className="h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-full" style={{ backgroundColor: colors.elevated }}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} className="h-full w-full" resizeMode="cover" />
+          <CachedImage uri={imageUrl} className="h-full w-full" />
         ) : (
-          <Text className="text-base font-semibold text-primary">{(title?.charAt(0) ?? "C").toUpperCase()}</Text>
+          <Text className="text-base font-semibold text-primary" style={fontStyles.semibold}>
+            {(title?.charAt(0) ?? "C").toUpperCase()}
+          </Text>
         )}
       </View>
-      <Text className="mt-1.5 max-w-[74px] text-center text-[9px] text-[#6B7280]">{title}</Text>
+      <Text className="mt-1.5 max-w-[74px] text-center text-[9px]" style={[fontStyles.medium, { color: colors.textMuted }]}>
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -143,19 +220,30 @@ function ProductRow({
 }
 
 export default function HomeScreen() {
+  const { colors, mode } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const flashHeaderTextColor = mode === "dark" ? "#FFFFFF" : "#111827";
   const { width } = useWindowDimensions();
-  const heroWidth = Math.max(280, width - 32);
+  const [heroWidth, setHeroWidth] = useState(Math.max(280, width - 32));
   const heroScrollRef = useRef<ScrollView | null>(null);
   const heroIndexRef = useRef(0);
 
   const [heroIndex, setHeroIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [sliders, setSliders] = useState<ApiSlider[]>([]);
   const [featuredProducts, setFeaturedProducts] = useState<ProductCardItem[]>([]);
   const [saleProducts, setSaleProducts] = useState<ProductCardItem[]>([]);
   const [allProducts, setAllProducts] = useState<ProductCardItem[]>([]);
   const [wishlistedProductIds, setWishlistedProductIds] = useState<Set<number>>(new Set());
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [locationLabel, setLocationLabel] = useState("Location unavailable");
+  const [featuredNextUrl, setFeaturedNextUrl] = useState<string | null>(null);
+  const [activeFlashSaleIds, setActiveFlashSaleIds] = useState<number[]>([]);
+  const [flashSaleRemainingSeconds, setFlashSaleRemainingSeconds] = useState<number>(0);
+  const [flashSaleEndsAtMs, setFlashSaleEndsAtMs] = useState<number | null>(null);
 
   const resetFilters = useProductFilterStore((state) => state.resetFilters);
   const setFilters = useProductFilterStore((state) => state.setFilters);
@@ -164,24 +252,25 @@ export default function HomeScreen() {
     let isMounted = true;
     async function loadHomeData() {
       try {
-        const [categoryResult, featuredResult, saleResult, productsResult, sliderResult] = await Promise.allSettled([
+        const [categoryResult, featuredResult, salesResult, saleProductsResult, productsResult, sliderResult, allProductsResult] = await Promise.allSettled([
           getCategories(),
-          getFeaturedProducts(),
-          (async () => {
-            const sales = await getFlashSales({ active: true, featured: true });
-            const saleIds = sales.map((sale) => sale.id);
-            const rows = await getFlashSaleProducts({ active: true });
-            return saleIds.length ? rows.filter((row) => saleIds.includes(row.flash_sale)) : rows;
-          })(),
-          getPublishedProducts(),
+          getFeaturedProductsPage({ page: 1 }),
+          getFlashSales({ active: true, featured: true }),
+          getFlashSaleProductsPage({ active: true, page: 1 }),
+          getPublishedProductsPage({ page: 1 }),
           getSliders(),
+          getPublishedProducts(),
         ]);
 
         const categoryData = categoryResult.status === "fulfilled" ? categoryResult.value : [];
-        const featuredData = featuredResult.status === "fulfilled" ? featuredResult.value : [];
-        const saleData = saleResult.status === "fulfilled" ? saleResult.value : [];
-        const productsData = productsResult.status === "fulfilled" ? productsResult.value : [];
+        const featuredPage = featuredResult.status === "fulfilled" ? featuredResult.value : { results: [], next: null };
+        const salesData = salesResult.status === "fulfilled" ? salesResult.value : [];
+        const saleProductsPage = saleProductsResult.status === "fulfilled" ? saleProductsResult.value : { results: [], next: null };
+        const productsPage = productsResult.status === "fulfilled" ? productsResult.value : { results: [], next: null };
         const sliderData = sliderResult.status === "fulfilled" ? sliderResult.value : [];
+        const allProductsData = allProductsResult.status === "fulfilled" ? allProductsResult.value : productsPage.results;
+        const saleIds = salesData.map((sale) => sale.id);
+        const firstActiveSale = salesData[0];
 
         let wishlistIds = new Set<number>();
         try {
@@ -195,17 +284,36 @@ export default function HomeScreen() {
 
         if (!isMounted) return;
 
-        const mappedProducts = productsData.map(mapProductToCard);
-        const mappedFlashProducts = saleData
-          .map((row) => mapFlashSaleProductToCard(row as ApiFlashSaleProduct))
+        const mappedProducts = allProductsData.map(mapProductToCard);
+        const stockByProductKey = new Map<string, unknown>();
+        allProductsData.forEach((product) => {
+          if (typeof product.id === "number") stockByProductKey.set(`id:${product.id}`, product.in_stock);
+          if (product.pid) stockByProductKey.set(`pid:${String(product.pid)}`, product.in_stock);
+        });
+        const mappedFlashProducts = saleProductsPage.results
+          .map((row) => mapFlashSaleProductToCard(row as ApiFlashSaleProduct, stockByProductKey))
           .filter((row): row is ProductCardItem => row !== null);
+        const filteredFlashProducts =
+          saleIds.length > 0
+            ? mappedFlashProducts.filter((row) => {
+                const source = saleProductsPage.results.find(
+                  (item) => String(item.product_details?.id ?? item.product_details?.pid ?? item.product) === row.slug,
+                );
+                return source ? saleIds.includes(source.flash_sale) : true;
+              })
+            : mappedFlashProducts;
 
         setCategories(categoryData);
         setSliders(sliderData.filter((row) => Boolean(row.image)));
-        setFeaturedProducts((featuredData.length ? featuredData : productsData).map(mapProductToCard));
-        setSaleProducts(mappedFlashProducts);
+        setFeaturedProducts((featuredPage.results.length ? featuredPage.results : productsPage.results).map(mapProductToCard));
+        setSaleProducts(filteredFlashProducts);
         setAllProducts(mappedProducts);
         setWishlistedProductIds(wishlistIds);
+        setFeaturedNextUrl(featuredPage.next);
+        setActiveFlashSaleIds(saleIds);
+        const initialRemaining = getSaleRemainingSeconds(firstActiveSale);
+        setFlashSaleRemainingSeconds(initialRemaining);
+        setFlashSaleEndsAtMs(initialRemaining > 0 ? Date.now() + initialRemaining * 1000 : null);
       } catch {
         if (!isMounted) return;
         setCategories([]);
@@ -213,6 +321,10 @@ export default function HomeScreen() {
         setFeaturedProducts([]);
         setSaleProducts([]);
         setAllProducts([]);
+        setFeaturedNextUrl(null);
+        setActiveFlashSaleIds([]);
+        setFlashSaleRemainingSeconds(0);
+        setFlashSaleEndsAtMs(null);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -222,7 +334,11 @@ export default function HomeScreen() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [reloadKey]);
+
+  useEffect(() => {
+    setHeroWidth(Math.max(280, width - 32));
+  }, [width]);
 
   useEffect(() => {
     if (sliders.length <= 1) return;
@@ -235,21 +351,137 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [heroWidth, sliders.length]);
 
+  useEffect(() => {
+    if (!flashSaleEndsAtMs) return;
+    const tick = () => {
+      const next = Math.max(0, Math.ceil((flashSaleEndsAtMs - Date.now()) / 1000));
+      setFlashSaleRemainingSeconds(next);
+      if (next === 0) setFlashSaleEndsAtMs(null);
+    };
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [flashSaleEndsAtMs]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function reverseByOpenStreetMap(latitude: number, longitude: number) {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+      );
+      if (!response.ok) throw new Error("Reverse geocode failed");
+      const data = await response.json();
+      const address = data?.address ?? {};
+      const city =
+        address.city ||
+        address.town ||
+        address.village ||
+        address.county ||
+        address.state ||
+        "Your Area";
+      const country = address.country || "Unknown";
+      return `${city}, ${country}`;
+    }
+
+    async function loadUserLocation() {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          if (mounted) setLocationLabel("Location permission denied");
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+
+        let label = "Location unavailable";
+        try {
+          // On web/dev this avoids deprecated Google Geocoding paths.
+          label = await reverseByOpenStreetMap(latitude, longitude);
+        } catch {
+          if (Platform.OS !== "web") {
+            try {
+              const place = await Location.reverseGeocodeAsync({ latitude, longitude });
+              const first = place[0];
+              const city = first?.city || first?.district || first?.subregion || first?.region || "Your Area";
+              const country = first?.country || "Unknown";
+              label = `${city}, ${country}`;
+            } catch {
+              label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+            }
+          } else {
+            label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+          }
+        }
+
+        if (mounted) setLocationLabel(label);
+      } catch {
+        if (mounted) setLocationLabel("Location unavailable");
+      }
+    }
+    void loadUserLocation();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  async function loadMoreFeeds() {
+    if (isLoading || isLoadingMore) return;
+    if (!featuredNextUrl) return;
+
+    setIsLoadingMore(true);
+    try {
+      const featuredPage = await getFeaturedProductsPage({ nextUrl: featuredNextUrl });
+
+      if (featuredPage) {
+        setFeaturedProducts((prev) => [...prev, ...featuredPage.results.map(mapProductToCard)]);
+        setFeaturedNextUrl(featuredPage.next);
+      }
+    } catch {
+      // No-op: keep current data and allow retry on next scroll.
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  function handleScroll(event: {
+    nativeEvent: {
+      layoutMeasurement: { height: number };
+      contentOffset: { y: number };
+      contentSize: { height: number };
+    };
+  }) {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+    if (remaining < 180) void loadMoreFeeds();
+  }
+
   async function handleToggleWishlist(item: ProductCardItem) {
     if (!item.productId) {
       notifyError("Wishlist failed", "This product cannot be wishlisted yet.");
       return;
     }
+    const productId = item.productId;
+    const wasWishlisted = wishlistedProductIds.has(productId);
+    setWishlistedProductIds((prev) => {
+      const next = new Set(prev);
+      if (wasWishlisted) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
     try {
-      const result = await toggleWishlistByProductId(item.productId);
-      setWishlistedProductIds((prev) => {
-        const next = new Set(prev);
-        if (result.action === "added") next.add(item.productId!);
-        else next.delete(item.productId!);
-        return next;
-      });
+      const result = await toggleWishlistByProductId(productId);
       notifySuccess(result.action === "added" ? "Added to wishlist" : "Removed from wishlist", item.name);
     } catch {
+      setWishlistedProductIds((prev) => {
+        const next = new Set(prev);
+        if (wasWishlisted) next.add(productId);
+        else next.delete(productId);
+        return next;
+      });
       notifyError("Wishlist failed", "Unable to update wishlist right now.");
     }
   }
@@ -275,16 +507,48 @@ export default function HomeScreen() {
         .slice(0, 4),
     [allProducts, categories],
   );
+  const hasActiveFlashSales = activeFlashSaleIds.length > 0 && saleProducts.length > 0;
+  const flashCountdownLabel = formatCountdown(flashSaleRemainingSeconds);
+
+  useEffect(() => {
+    prefetchImageUris(
+      [
+        ...sliders.slice(0, 4).map((row) => resolveMediaUrl(row.image)),
+        ...saleProducts.slice(0, 10).map((row) => row.imageUrl),
+        ...featuredProducts.slice(0, 10).map((row) => row.imageUrl),
+        ...allProducts.slice(0, 10).map((row) => row.imageUrl),
+      ],
+      28,
+    );
+  }, [allProducts, featuredProducts, saleProducts, sliders]);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F7F7F3]" edges={["top"]}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false} stickyHeaderIndices={[0]}>
-        <View className="bg-[#F7F7F3] px-4 pb-3 pt-3">
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }} edges={[]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+        stickyHeaderIndices={[0]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              setReloadKey((prev) => prev + 1);
+              setTimeout(() => setIsRefreshing(false), 800);
+            }}
+          />
+        }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <View className="px-4 pb-3" style={{ backgroundColor: colors.background, paddingTop: Math.max(insets.top + 4, 12) }}>
           <View className="mb-4 flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
               <LocationPinIcon />
-              <Text className="text-[13px] font-medium text-[#4B4B4B]">Uyo, Nigeria</Text>
-              <Text className="text-[11px] text-[#6B7280]">▼</Text>
+              <Text className="text-[13px] font-medium" style={[fontStyles.medium, { color: colors.text }]}>
+                {locationLabel}
+              </Text>
+              <Text className="text-[11px]" style={{ color: colors.textMuted }}>▼</Text>
             </View>
             <BellIcon />
           </View>
@@ -293,16 +557,27 @@ export default function HomeScreen() {
               resetFilters();
               router.push("/search");
             }}
-            className="flex-row items-center rounded-[14px] border border-primary bg-white px-3 py-3"
+            className="flex-row items-center rounded-[14px] border border-primary px-3 py-3"
+            style={{ backgroundColor: colors.card }}
           >
             <SearchIcon />
-            <Text className="pl-3 text-[15px] text-[#98A2B3]">Search</Text>
+            <Text className="pl-3 text-[15px]" style={[fontStyles.regular, { color: colors.textMuted }]}>
+              Search
+            </Text>
           </Pressable>
         </View>
 
         <View className="px-4">
           {sliders.length > 0 ? (
-            <View className="mb-8">
+            <View
+              className="mb-8 overflow-hidden rounded-[10px]"
+              onLayout={(event) => {
+                const measuredWidth = event.nativeEvent.layout.width;
+                if (measuredWidth > 0 && measuredWidth !== heroWidth) {
+                  setHeroWidth(measuredWidth);
+                }
+              }}
+            >
               <ScrollView
                 ref={heroScrollRef}
                 horizontal
@@ -310,6 +585,8 @@ export default function HomeScreen() {
                 snapToInterval={heroWidth}
                 decelerationRate="fast"
                 showsHorizontalScrollIndicator={false}
+                bounces={false}
+                overScrollMode="never"
                 onMomentumScrollEnd={(event) => {
                   const next = Math.round(event.nativeEvent.contentOffset.x / heroWidth);
                   heroIndexRef.current = next;
@@ -317,8 +594,8 @@ export default function HomeScreen() {
                 }}
               >
                 {sliders.map((slider) => (
-                  <View key={`slider-${slider.id}`} className="h-[170px] overflow-hidden rounded-[10px] bg-[#E2E2E2]" style={{ width: heroWidth }}>
-                    <Image source={{ uri: resolveMediaUrl(slider.image) }} className="h-full w-full" resizeMode="cover" />
+                  <View key={`slider-${slider.id}`} className="h-[170px] overflow-hidden rounded-[10px]" style={{ width: heroWidth, backgroundColor: colors.elevated }}>
+                    <CachedImage uri={resolveMediaUrl(slider.image)!} className="h-full w-full" />
                   </View>
                 ))}
               </ScrollView>
@@ -332,15 +609,19 @@ export default function HomeScreen() {
                         setHeroIndex(index);
                         heroScrollRef.current?.scrollTo({ x: index * heroWidth, animated: true });
                       }}
-                      className={`mx-1 rounded-full ${heroIndex === index ? "bg-primary" : "bg-[#D3D3D3]"}`}
-                      style={{ width: heroIndex === index ? 14 : 6, height: 6 }}
+                      className="mx-1 rounded-full"
+                      style={{
+                        backgroundColor: heroIndex === index ? colors.primary : colors.border,
+                        width: heroIndex === index ? 14 : 6,
+                        height: 6,
+                      }}
                     />
                   ))}
                 </View>
               ) : null}
             </View>
           ) : (
-            <View className="mb-8 h-[170px] rounded-[10px] bg-[#E2E2E2]" />
+            <View className="mb-8 h-[170px] rounded-[10px]" style={{ backgroundColor: colors.elevated }} />
           )}
         </View>
 
@@ -361,52 +642,76 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        <View className="mt-8 bg-[#F91509] px-4 py-5">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-3">
-              <CouponIcon />
-              <View>
-                <Text className="text-[13px] font-bold text-white">Flash Sales</Text>
-                <Text className="mt-1 text-[11px] font-medium tracking-[0.3px] text-white">LIVE DEALS</Text>
+        {hasActiveFlashSales ? (
+          <View className="mt-8 px-4 py-3" style={{ backgroundColor: mode === "dark" ? "#B91C1C" : "#DC2626" }}>
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1 flex-row items-start gap-3 pr-3">
+                <CouponIcon />
+                <View className="flex-1">
+                  <Text className="text-[15px] font-bold" style={[fontStyles.bold, { color: flashHeaderTextColor }]}>
+                    Flash Sales
+                  </Text>
+                  <View className="mt-1 self-start rounded-[8px] px-2.5 py-1" style={{ backgroundColor: "rgba(17,24,39,0.28)" }}>
+                    <Text className="text-[14px] font-semibold tracking-[0.2px] text-white" style={fontStyles.semibold}>
+                      {flashCountdownLabel}
+                    </Text>
+                  </View>
+                </View>
               </View>
+              <Pressable
+                onPress={() => {
+                  setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
+                  router.push("/flash-sales");
+                }}
+              >
+                <Text className="text-[12px] font-semibold underline" style={[fontStyles.semibold, { color: flashHeaderTextColor }]}>
+                  See All
+                </Text>
+              </Pressable>
             </View>
-            <Pressable
-              onPress={() => {
-                setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
-                router.push("/flash-sales");
-              }}
-            >
-              <Text className="text-[12px] font-semibold text-white underline">See All</Text>
-            </Pressable>
           </View>
-        </View>
+        ) : null}
 
         {isLoading ? (
-          <View className="items-center py-8">
-            <ActivityIndicator color="#FF9B00" />
-          </View>
+          <HomeFeedSkeleton />
         ) : (
           <>
-            <View className="mt-5">
-              <ProductRow items={(saleProducts.length ? saleProducts : allProducts).slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
-            </View>
+            {hasActiveFlashSales ? (
+              <View className="mt-5">
+                <ProductRow
+                  items={saleProducts.slice(0, 10)}
+                  compact
+                  wishlistedProductIds={wishlistedProductIds}
+                  onToggleWishlist={handleToggleWishlist}
+                />
+              </View>
+            ) : null}
 
             <View className="mt-7 bg-primary px-4 py-5">
               <View className="flex-row items-center justify-between">
-                <Text className="text-[15px] font-semibold text-white">Featured</Text>
+                <Text className="text-[15px] font-semibold text-white" style={fontStyles.semibold}>
+                  Featured
+                </Text>
                 <Pressable
                   onPress={() => {
                     setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
                     router.push("/featured");
                   }}
                 >
-                  <Text className="text-[12px] font-semibold text-white">See All</Text>
+                  <Text className="text-[12px] font-semibold text-white" style={fontStyles.semibold}>
+                    See All
+                  </Text>
                 </Pressable>
               </View>
             </View>
 
             <View className="mt-5">
-              <ProductRow items={(featuredProducts.length ? featuredProducts : allProducts).slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
+              <ProductRow
+                items={(featuredProducts.length ? featuredProducts : allProducts).slice(0, 10)}
+                compact
+                wishlistedProductIds={wishlistedProductIds}
+                onToggleWishlist={handleToggleWishlist}
+              />
             </View>
 
             {categorySections.map(({ category, items }) => (
@@ -423,15 +728,20 @@ export default function HomeScreen() {
                     router.push({ pathname: "/category-products", params: { category: category.title, title: category.title } });
                   }}
                 />
-                <ProductRow items={items.slice(0, 10)} compact wishlistedProductIds={wishlistedProductIds} onToggleWishlist={handleToggleWishlist} />
+                <ProductRow
+                  items={items.slice(0, 10)}
+                  compact
+                  wishlistedProductIds={wishlistedProductIds}
+                  onToggleWishlist={handleToggleWishlist}
+                />
               </View>
             ))}
 
-            {allProducts.slice(0, 20).length > 0 ? (
+            {allProducts.length > 0 ? (
               <>
                 <SectionTitle title="Suggested for you" hideViewAll />
                 <View className="px-4 pb-10">
-                  {suggestedRows.slice(0, 10).map((row, rowIndex) => (
+                  {suggestedRows.map((row, rowIndex) => (
                     <View key={`suggested-row-${rowIndex}`} className={`${rowIndex < suggestedRows.length - 1 ? "mb-4" : ""} flex-row justify-center gap-3`}>
                       {row.map((item) => (
                         <PromoCard key={item.slug} item={item} wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false} onToggleWishlist={handleToggleWishlist} />
@@ -440,6 +750,23 @@ export default function HomeScreen() {
                   ))}
                 </View>
               </>
+            ) : (
+              <View className="px-6 pb-10 pt-4">
+                <Text className="text-center text-[14px]" style={{ color: colors.textMuted }}>
+                  No products available right now.
+                </Text>
+                <Pressable
+                  onPress={() => setReloadKey((prev) => prev + 1)}
+                  className="mt-5 self-center rounded-full bg-primary px-6 py-3"
+                >
+                  <Text className="text-[13px] font-semibold text-white">Explore Products</Text>
+                </Pressable>
+              </View>
+            )}
+            {isLoadingMore ? (
+              <View className="items-center pb-10 pt-2">
+                <ActivityIndicator color={colors.primary} />
+              </View>
             ) : null}
           </>
         )}

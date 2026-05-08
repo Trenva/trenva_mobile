@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AllProductsCard,
   BackDarkIcon,
   CategorySearchBar,
-  FilterIcon,
   SubcategorySection,
 } from "../../components/ui/category-ui";
 import {
@@ -17,10 +18,11 @@ import {
   getLevelTwoCategories,
   getPublishedProducts,
   getSubcategories,
-  resolveMediaUrl,
+  resolveProductCardImageUrl,
 } from "../../lib/api/shop";
 import { notifyError } from "../../lib/ui/notify";
 import { useProductFilterStore } from "../../store/product-filter-store";
+import { useAppTheme } from "../../lib/theme/theme-provider";
 
 type DetailSection = {
   title: string;
@@ -79,7 +81,7 @@ function buildSections({
     if (levelTwoItems.length > 0) {
       items = levelTwoItems.slice(0, 12).map((item) => ({
         label: item.title,
-        imageUrl: resolveMediaUrl(item.image),
+        imageUrl: resolveProductCardImageUrl(item.image),
         emoji: toIcon(item.title),
         levelTwoTitle: item.title,
       }));
@@ -97,7 +99,7 @@ function buildSections({
     }
 
     if (items.length === 0) {
-      items = [{ label: subcategory.title, imageUrl: resolveMediaUrl(subcategory.image), emoji: toIcon(subcategory.title) }];
+      items = [{ label: subcategory.title, imageUrl: resolveProductCardImageUrl(subcategory.image), emoji: toIcon(subcategory.title) }];
     }
 
     return {
@@ -108,61 +110,67 @@ function buildSections({
 }
 
 export default function CategoryDetailScreen() {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { slug, title } = useLocalSearchParams<{ slug?: string; title?: string }>();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [categoryTitle, setCategoryTitle] = useState("All Products");
   const [sections, setSections] = useState<DetailSection[]>([]);
   const setFilters = useProductFilterStore((state) => state.setFilters);
 
-  useEffect(() => {
-    let isMounted = true;
+  async function loadCategoryDetails(showLoader = true) {
+    try {
+      if (showLoader) setIsLoading(true);
+      const [categories, subcategories, levelTwoCategories, products] = await Promise.all([
+        getCategories(),
+        getSubcategories(),
+        getLevelTwoCategories(),
+        getPublishedProducts(),
+      ]);
 
-    async function loadCategoryDetails() {
-      try {
-        setIsLoading(true);
-        const [categories, subcategories, levelTwoCategories, products] = await Promise.all([
-          getCategories(),
-          getSubcategories(),
-          getLevelTwoCategories(),
-          getPublishedProducts(),
-        ]);
+      const resolvedTitle = resolveCategoryTitle(title, slug, categories);
+      const resolvedSections = buildSections({
+        categoryTitle: resolvedTitle,
+        subcategories,
+        levelTwoCategories,
+        products,
+      });
 
-        if (!isMounted) return;
-
-        const resolvedTitle = resolveCategoryTitle(title, slug, categories);
-        const resolvedSections = buildSections({
-          categoryTitle: resolvedTitle,
-          subcategories,
-          levelTwoCategories,
-          products,
-        });
-
-        setCategoryTitle(resolvedTitle);
-        setSections(resolvedSections);
-      } catch {
-        if (!isMounted) return;
-        setSections([]);
-        notifyError("Category failed", "Unable to load category details right now.");
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+      setCategoryTitle(resolvedTitle);
+      setSections(resolvedSections);
+    } catch {
+      setSections([]);
+      notifyError("Category failed", "Unable to load category details right now.");
+    } finally {
+      if (showLoader) setIsLoading(false);
+      setIsRefreshing(false);
     }
+  }
 
-    void loadCategoryDetails();
-
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    void loadCategoryDetails(true);
   }, [slug, title]);
 
   return (
-    <View className="flex-1 bg-white">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-        <View className="px-5 pt-5">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setIsRefreshing(true);
+              void loadCategoryDetails(false);
+            }}
+          />
+        }
+      >
+        <View style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }} className="px-5 pb-3">
           <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+            <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
               <BackDarkIcon />
             </Pressable>
 
@@ -179,20 +187,18 @@ export default function CategoryDetailScreen() {
                 }}
               />
             </View>
-
-            <Pressable onPress={() => router.push("/filters")} className="h-8 w-8 items-center justify-center">
-              <FilterIcon />
-            </Pressable>
           </View>
+        </View>
 
+        <View className="px-5 pt-2">
           <AllProductsCard title={categoryTitle} />
 
           {isLoading ? (
             <View className="items-center py-12">
-              <ActivityIndicator color="#FF9B00" />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : sections.length === 0 ? (
-            <Text className="py-8 text-center text-[14px] text-[#737373]">
+            <Text className="py-8 text-center text-[14px]" style={{ color: colors.textMuted }}>
               No subcategories available for this category yet.
             </Text>
           ) : (
@@ -201,13 +207,31 @@ export default function CategoryDetailScreen() {
                 key={section.title}
                 title={section.title}
                 items={section.items}
+                onPressViewAll={() =>
+                  router.push({
+                    pathname: "/subcategory-products",
+                    params: { category: categoryTitle, subcategory: section.title },
+                  })
+                }
                 onPressItem={(item) =>
                   {
+                    if (item.levelTwoTitle) {
+                      router.push({
+                        pathname: "/leveltwo-products",
+                        params: {
+                          category: categoryTitle,
+                          subcategory: section.title,
+                          leveltwo: item.levelTwoTitle,
+                        },
+                      });
+                      return;
+                    }
+
                     setFilters({
                       query: item.label,
                       category: categoryTitle,
                       subcategory: section.title,
-                      leveltwo: item.levelTwoTitle ?? "",
+                      leveltwo: "",
                     });
                     router.push("/search-results");
                   }
@@ -220,3 +244,6 @@ export default function CategoryDetailScreen() {
     </View>
   );
 }
+
+
+

@@ -10,7 +10,7 @@ import {
   EyeIcon,
   GoogleButton,
   NameFields,
-  PhoneField,
+  PhoneFieldWithCountry,
   PrimaryButton,
 } from "../../components/ui/auth-ui";
 import { getApiErrorMessage } from "../../lib/api/errors";
@@ -22,6 +22,7 @@ export default function SignupScreen() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+234");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -73,6 +74,8 @@ export default function SignupScreen() {
         email: normalizedEmail,
         password,
         password_confirm: confirmPassword,
+        phone: phone.trim() ? `${countryCode}${phone.trim()}` : "",
+        phone_number: phone.trim() ? `${countryCode}${phone.trim()}` : "",
         bio: `Hi, I'm ${firstName.trim()} ${lastName.trim()}.`,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
@@ -124,7 +127,12 @@ export default function SignupScreen() {
             autoCapitalize="none"
           />
 
-          <PhoneField value={phone} onChangeText={setPhone} />
+          <PhoneFieldWithCountry
+            value={phone}
+            onChangeText={setPhone}
+            countryCode={countryCode}
+            onChangeCountryCode={setCountryCode}
+          />
 
           <AuthField
             label="Password"
