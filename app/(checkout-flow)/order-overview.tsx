@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon, TabIcon } from "../../components/ui/home-ui";
 import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
-import { type ApiProduct, formatMoney, getOrders, getPublishedProducts, resolveProductCardImageUrl } from "../../lib/api/shop";
+import { type ApiProduct, formatMoney, getFeaturedProductsPage, getOrders, resolveProductCardImageUrl } from "../../lib/api/shop";
 import { useCheckoutStore } from "../../store/checkout-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
@@ -23,18 +23,21 @@ function SuccessBadgeIcon() {
   );
 }
 
-function RecommendationCard({ product, colors }: { product: ApiProduct; colors: ReturnType<typeof useAppTheme>["colors"] }) {
+function RecommendationCard({
+  product,
+  colors,
+  onPress,
+}: {
+  product: ApiProduct;
+  colors: ReturnType<typeof useAppTheme>["colors"];
+  onPress: () => void;
+}) {
   const price = formatMoney(product.price);
   const imageUrl = resolveProductCardImageUrl(product.image);
   const rating = Number(product.average_rating ?? 0);
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: String(product.id ?? product.pid), name: product.title, price },
-        })
-      }
+      onPress={onPress}
       className="mr-3 w-[150px] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -55,7 +58,13 @@ function RecommendationCard({ product, colors }: { product: ApiProduct; colors: 
   );
 }
 
-function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
+function BottomQuickNav({
+  colors,
+  onNavigate,
+}: {
+  colors: ReturnType<typeof useAppTheme>["colors"];
+  onNavigate: (path: "/(tabs)" | "/(tabs)/categories" | "/(tabs)/cart" | "/(tabs)/wishlist" | "/(tabs)/profile") => void;
+}) {
   const items = [
     { routeName: "index", path: "/(tabs)" as const },
     { routeName: "categories", path: "/(tabs)/categories" as const },
@@ -68,7 +77,7 @@ function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["co
     <View className="px-4 pb-4 pt-2">
       <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
         {items.map((item) => (
-          <Pressable key={item.routeName} onPress={() => router.push(item.path)}>
+          <Pressable key={item.routeName} onPress={() => onNavigate(item.path)}>
             <TabIcon routeName={item.routeName} color={colors.primary} />
           </Pressable>
         ))}
@@ -78,6 +87,7 @@ function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["co
 }
 
 export default function OrderOverviewScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ orderId?: string; total?: string; items?: string }>();
@@ -92,7 +102,7 @@ export default function OrderOverviewScreen() {
   async function loadData() {
     try {
       if (activeOrderId && activeOrderId !== "N/A") {
-        const [orders, products] = await Promise.all([getOrders(), getPublishedProducts()]);
+        const [orders, featured] = await Promise.all([getOrders(), getFeaturedProductsPage({ page: 1 })]);
         const found = orders.find((order) => order.oid === activeOrderId);
         if (found?.order_date) {
           const date = new Date(found.order_date);
@@ -100,11 +110,11 @@ export default function OrderOverviewScreen() {
         } else {
           setOrderDate(null);
         }
-        setRecommendedProducts(products.slice(0, 10));
+        setRecommendedProducts(featured.results.slice(0, 10));
       } else {
-        const products = await getPublishedProducts();
+        const featured = await getFeaturedProductsPage({ page: 1 });
         setOrderDate(null);
-        setRecommendedProducts(products.slice(0, 10));
+        setRecommendedProducts(featured.results.slice(0, 10));
       }
     } catch {
       setOrderDate(null);
@@ -149,7 +159,7 @@ export default function OrderOverviewScreen() {
       >
         <View className="px-4 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
           <View className="mb-4 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <BellDarkIcon />
@@ -186,7 +196,17 @@ export default function OrderOverviewScreen() {
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {recommendedProducts.map((product) => (
-              <RecommendationCard key={String(product.id ?? product.pid)} product={product} colors={colors} />
+              <RecommendationCard
+                key={String(product.id ?? product.pid)}
+                product={product}
+                colors={colors}
+                onPress={() =>
+                  router.push({
+                    pathname: "/product/[slug]",
+                    params: { slug: String(product.id ?? product.pid), name: product.title, price: formatMoney(product.price) },
+                  })
+                }
+              />
             ))}
           </ScrollView>
 
@@ -196,10 +216,11 @@ export default function OrderOverviewScreen() {
         </View>
       </ScrollView>
 
-      <BottomQuickNav colors={colors} />
+      <BottomQuickNav colors={colors} onNavigate={(path) => router.push(path)} />
     </View>
   );
 }
+
 
 
 

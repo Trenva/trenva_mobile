@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -53,6 +53,7 @@ function PasswordField({
 }
 
 export default function ChangePasswordScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -82,7 +83,7 @@ export default function ChangePasswordScreen() {
         confirmNewPassword,
       });
       notifySuccess("Password updated", "Password changed successfully.");
-      router.back();
+      goBackOr(router, "/(tabs)/profile");
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
@@ -97,52 +98,62 @@ export default function ChangePasswordScreen() {
   }
 
   return (
-    <View className="flex-1 px-5" style={{ backgroundColor: colors.background, paddingTop: Math.max(insets.top + 4, 12) }}>
-      <View className="flex-row items-center">
-        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
-          <BackIcon />
-        </Pressable>
-      </View>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView
+        className="px-5"
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{ paddingTop: Math.max(insets.top + 4, 12), paddingBottom: 24 }}
+      >
+        <View className="flex-row items-center">
+          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
+            <BackIcon />
+          </Pressable>
+        </View>
 
-      <Text className="mt-8 text-center text-[24px] font-medium" style={{ color: colors.text }}>Change Password</Text>
+        <Text className="mt-8 text-center text-[24px] font-medium" style={{ color: colors.text }}>Change Password</Text>
 
-      <View className="mt-7">
-        <PasswordField
-          placeholder="Current Password"
-          value={currentPassword}
-          onChangeText={setCurrentPassword}
-          secureTextEntry={!showCurrent}
-          onToggleSecure={() => setShowCurrent((prev) => !prev)}
-        />
-        <PasswordField
-          placeholder="New Password"
-          value={newPassword}
-          onChangeText={setNewPassword}
-          secureTextEntry={!showNew}
-          onToggleSecure={() => setShowNew((prev) => !prev)}
-        />
-        <PasswordField
-          placeholder="Confirm New Password"
-          value={confirmNewPassword}
-          onChangeText={setConfirmNewPassword}
-          secureTextEntry={!showConfirm}
-          onToggleSecure={() => setShowConfirm((prev) => !prev)}
-        />
-      </View>
+        <View className="mt-7">
+          <PasswordField
+            placeholder="Current Password"
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            secureTextEntry={!showCurrent}
+            onToggleSecure={() => setShowCurrent((prev) => !prev)}
+          />
+          <PasswordField
+            placeholder="New Password"
+            value={newPassword}
+            onChangeText={setNewPassword}
+            secureTextEntry={!showNew}
+            onToggleSecure={() => setShowNew((prev) => !prev)}
+          />
+          <PasswordField
+            placeholder="Confirm New Password"
+            value={confirmNewPassword}
+            onChangeText={setConfirmNewPassword}
+            secureTextEntry={!showConfirm}
+            onToggleSecure={() => setShowConfirm((prev) => !prev)}
+          />
+        </View>
 
-      <View className="mt-5">
-        <Pressable
-          onPress={handleSave}
-          disabled={isSubmitting}
-          className="rounded-full py-3.5"
-          style={{ backgroundColor: isSubmitting ? colors.border : colors.primary }}
-        >
-          <Text className="text-center text-[16px] text-white">{isSubmitting ? "Saving..." : "Save"}</Text>
-        </Pressable>
-      </View>
-    </View>
+        <View className="mt-5">
+          <Pressable
+            onPress={handleSave}
+            disabled={isSubmitting}
+            className="rounded-full py-3.5"
+            style={{ backgroundColor: isSubmitting ? colors.border : colors.primary }}
+          >
+            <Text className="text-center text-[16px] text-white">{isSubmitting ? "Saving..." : "Save"}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
 
 
 

@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { applyProductFilters } from "../../lib/search/product-filters";
-import { formatMoney, getPublishedProductsPage, getSubcategories, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct, type ApiSubCategory } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsFiltered, getSubcategories, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct, type ApiSubCategory } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
 import { CachedImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
+import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
 
 function normalize(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function ProductCard({ item }: { item: ApiProduct }) {
+function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -25,7 +26,7 @@ function ProductCard({ item }: { item: ApiProduct }) {
   const imageUrl = resolveProductCardImageUrl(item.image);
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: String(item.id ?? item.pid), name: item.title, price } })}
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -59,14 +60,14 @@ function ProductCard({ item }: { item: ApiProduct }) {
 }
 
 export default function CategoryProductsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const { category, title } = useLocalSearchParams<{ category?: string; title?: string }>();
+  const { category, title, cid } = useLocalSearchParams<{ category?: string; title?: string; cid?: string }>();
   const categoryTitle = (title ?? category ?? "Category").trim();
+  const categoryCid = String(cid ?? "").trim();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [subcategories, setSubcategories] = useState<ApiSubCategory[]>([]);
   const filters = useProductFilterStore();
@@ -79,48 +80,27 @@ export default function CategoryProductsScreen() {
   const loadInitial = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [productPage, subRows] = await Promise.all([getPublishedProductsPage({ page: 1 }), getSubcategories()]);
-      setProducts(productPage.results.filter((p) => normalize(p.category) === normalize(categoryTitle)));
-      setNextUrl(productPage.next);
+      const [filteredProducts, subRows] = await Promise.all([
+        getPublishedProductsFiltered({
+          categoryTitle,
+          categoryCid: categoryCid || undefined,
+        }),
+        getSubcategories(),
+      ]);
+      setProducts(filteredProducts);
       setSubcategories(subRows.filter((s) => normalize(s.category_name) === normalize(categoryTitle)));
     } catch {
       setProducts([]);
-      setNextUrl(null);
       setSubcategories([]);
       notifyError("Category failed", "Unable to load category products right now.");
     } finally {
       setIsLoading(false);
     }
-  }, [categoryTitle]);
+  }, [categoryCid, categoryTitle]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
-
-  async function loadMore() {
-    if (!nextUrl || isLoadingMore || isLoading) return;
-    try {
-      setIsLoadingMore(true);
-      const page = await getPublishedProductsPage({ nextUrl });
-      setProducts((prev) => [
-        ...prev,
-        ...page.results.filter((p) => normalize(p.category) === normalize(categoryTitle)),
-      ]);
-      setNextUrl(page.next);
-    } catch {
-      notifyError("Load failed", "Unable to load more products.");
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }
-
-  function handleScroll(event: any) {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-    if (remaining < 180) {
-      void loadMore();
-    }
-  }
 
   const filteredProducts = useMemo(
     () =>
@@ -149,12 +129,10 @@ export default function CategoryProductsScreen() {
             }}
           />
         }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
       >
         <View style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }} className="px-4 pb-2">
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
@@ -193,7 +171,7 @@ export default function CategoryProductsScreen() {
 
         <View className="px-4 pt-6">
           {isLoading ? (
-            <View className="py-4"><LoadingListSkeleton rows={3} /></View>
+            <View className="py-4"><ProductGridSkeleton rows={3} /></View>
           ) : filteredProducts.length === 0 ? (
             <View className="py-12">
               <Text className="text-center text-[14px]" style={{ color: colors.textMuted }}>No products available right now.</Text>
@@ -203,17 +181,24 @@ export default function CategoryProductsScreen() {
             </View>
           ) : (
             <View className="flex-row flex-wrap justify-between">
-              {filteredProducts.map((item) => <ProductCard key={String(item.id ?? item.pid)} item={item} />)}
+              {filteredProducts.map((item) => (
+                <ProductCard
+                  key={String(item.id ?? item.pid)}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: String(item.id ?? item.pid), name: item.title, price: formatMoney(item.price) },
+                    })
+                  }
+                />
+              ))}
             </View>
           )}
-          {isLoadingMore ? (
-            <View className="items-center py-4">
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : null}
         </View>
       </ScrollView>
     </View>
   );
 }
+
 

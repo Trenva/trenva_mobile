@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
   AuthCard,
@@ -17,6 +18,8 @@ import { login } from "../../lib/api/auth";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function LoginScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -52,13 +55,16 @@ export default function LoginScreen() {
     <KeyboardAvoidingView
       className="flex-1 bg-gray-100"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
       <StatusBar style="light" />
       <ScrollView
         bounces={false}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 }}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom + 140, 180) }}
       >
         <AuthHeader
           title={"Sign in to your\nAccount"}

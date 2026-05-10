@@ -19,3 +19,6 @@ export function setCached<T>(key: string, value: T, ttlMs: number) {
   memory.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
+export function deleteCached(key: string) {
+  memory.delete(key);
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -8,7 +8,8 @@ import { HeartFilledIcon, HeartOutlineIcon } from "../../components/ui/home-ui";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import {
   formatMoney,
-  getPublishedProductsPage,
+  getVendorByVid,
+  getPublishedProductsFiltered,
   getVendors,
   isExplicitlyOutOfStock,
   getWishlistItems,
@@ -48,10 +49,12 @@ function VendorProductCard({
   item,
   wishlisted,
   onToggleWishlist,
+  onPress,
 }: {
   item: ApiProduct;
   wishlisted: boolean;
   onToggleWishlist: (item: ApiProduct) => void;
+  onPress: () => void;
 }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
@@ -62,12 +65,7 @@ function VendorProductCard({
 
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: String(item.id ?? item.pid), name: item.title, price },
-        })
-      }
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[8px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -96,6 +94,7 @@ function VendorProductCard({
 }
 
 export default function VendorProfileScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { slug, name } = useLocalSearchParams<{ slug?: string; name?: string }>();
   const insets = useSafeAreaInsets();
@@ -104,12 +103,11 @@ export default function VendorProfileScreen() {
   const contentMaxWidth = width >= 900 ? 980 : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [vendor, setVendor] = useState<ApiVendor | null>(null);
   const [vendorProducts, setVendorProducts] = useState<ApiProduct[]>([]);
-  const [nextProductsUrl, setNextProductsUrl] = useState<string | null>(null);
-  const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const [wishlistedProductIds, setWishlistedProductIds] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<"Home" | "Products" | "Categories" | "Reviews">("Home");
   const [sortBy, setSortBy] = useState<"default" | "price_asc" | "price_desc" | "new">("default");
@@ -122,47 +120,61 @@ export default function VendorProfileScreen() {
   useEffect(() => {
     let isMounted = true;
     async function loadVendorData() {
+      setIsLoading(true);
+      setIsProductsLoading(true);
       try {
-        const [vendors, productsPage, wishlist] = await Promise.all([
-          getVendors(),
-          getPublishedProductsPage({ page: 1 }),
-          getWishlistItems().catch(() => []),
-        ]);
-        if (!isMounted) return;
+        const wishlistPromise = getWishlistItems().catch(() => []);
+        const profilePromise = fetchProfile().catch(() => null);
 
-        const matchedVendor =
-          vendors.find((v) => normalize(v.vid) === normalize(slug)) ||
-          vendors.find((v) => normalize(v.name) === normalize(vendorHint)) ||
-          vendors.find((v) => normalize(v.name).includes(normalize(vendorHint)));
+        let matchedVendor: ApiVendor | null = null;
+        const candidateVid = String(slug ?? "").trim();
+        if (candidateVid) {
+          matchedVendor = await getVendorByVid(candidateVid).catch(() => null);
+        }
+
+        if (!matchedVendor && vendorHint) {
+          const vendors = await getVendors();
+          matchedVendor =
+            vendors.find((v) => normalize(v.vid) === normalize(slug)) ||
+            vendors.find((v) => normalize(v.name) === normalize(vendorHint)) ||
+            vendors.find((v) => normalize(v.name).includes(normalize(vendorHint))) ||
+            null;
+        }
+
+        if (!isMounted) return;
         setVendor(matchedVendor ?? null);
         setIsFollowingVendor(Boolean(matchedVendor?.is_following));
         setVendorFollowerCount(Number(matchedVendor?.follower_count ?? 0));
+        setIsLoading(false);
 
         const targetVendorName = matchedVendor?.name ?? vendorHint;
-        setVendorProducts(
-          productsPage.results.filter((product) => normalize(product.vendor) === normalize(targetVendorName)),
-        );
-        setNextProductsUrl(productsPage.next);
+        const [vendorProductsRows, wishlist, me] = await Promise.all([
+          getPublishedProductsFiltered({
+            vendorName: targetVendorName || undefined,
+          }),
+          wishlistPromise,
+          profilePromise,
+        ]);
+        if (!isMounted) return;
+        setVendorProducts(vendorProductsRows);
 
         const wishlistIds = new Set(
           wishlist.map((item) => getWishlistProductId(item)).filter((value): value is number => typeof value === "number"),
         );
         setWishlistedProductIds(wishlistIds);
 
-        try {
-          const me = await fetchProfile();
-          setCurrentUserId(typeof me.id === "number" ? me.id : null);
-        } catch {
-          setCurrentUserId(null);
-        }
+        setCurrentUserId(typeof me?.id === "number" ? me.id : null);
       } catch {
         if (!isMounted) return;
         setVendor(null);
         setVendorProducts([]);
-        setNextProductsUrl(null);
         notifyError("Vendor failed", "Unable to load vendor details right now.");
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsProductsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     }
     void loadVendorData();
@@ -245,37 +257,10 @@ export default function VendorProfileScreen() {
     await Share.share({ message: `Check out ${vendorName} on Trenva` });
   }
 
-  async function loadMoreVendorProducts() {
-    if (!nextProductsUrl || isLoadingMoreProducts || isLoading) return;
-    try {
-      setIsLoadingMoreProducts(true);
-      const page = await getPublishedProductsPage({ nextUrl: nextProductsUrl });
-      const targetVendorName = vendor?.name ?? vendorHint;
-      const additional = page.results.filter((product) => normalize(product.vendor) === normalize(targetVendorName));
-      if (additional.length > 0) {
-        setVendorProducts((prev) => [...prev, ...additional]);
-      }
-      setNextProductsUrl(page.next);
-    } catch {
-      notifyError("Load failed", "Unable to load more vendor products.");
-    } finally {
-      setIsLoadingMoreProducts(false);
-    }
-  }
-
-  function handleScroll(event: any) {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-    if (remaining < 180) {
-      void loadMoreVendorProducts();
-    }
-  }
-
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[0]}
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={
           <RefreshControl
@@ -283,19 +268,16 @@ export default function VendorProfileScreen() {
             onRefresh={() => {
               setIsRefreshing(true);
               setReloadKey((prev) => prev + 1);
-              setTimeout(() => setIsRefreshing(false), 800);
             }}
           />
         }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
       >
         <View
           className="px-4 pb-3"
           style={{ backgroundColor: colors.background, width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12) }}
         >
           <View className="mb-4 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}><BackIcon /></Pressable>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}><BackIcon /></Pressable>
             <View className="flex-row items-center gap-4">
               <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
               <BellDarkIcon />
@@ -317,7 +299,7 @@ export default function VendorProfileScreen() {
                   </View>
                   <View className="flex-1">
                     <View className="flex-row items-center gap-1.5">
-                      <Text numberOfLines={1} className="text-[24px] font-semibold" style={{ color: colors.text }}>{vendorName}</Text>
+                      <Text numberOfLines={1} className="text-[20px] font-semibold" style={{ color: colors.text }}>{vendorName}</Text>
                       {vendor?.verified ? <VerifiedIcon /> : null}
                     </View>
                     <Text className="mt-1 text-[16px]" style={{ color: colors.primary }}>{formatSold(soldCount)} Sold</Text>
@@ -403,6 +385,10 @@ export default function VendorProfileScreen() {
                   <Text className="mt-2 text-[14px]" style={{ color: colors.textMuted }}>Average rating: {vendorRating > 0 ? vendorRating.toFixed(1) : "N/A"}</Text>
                   <Text className="mt-1 text-[14px]" style={{ color: colors.textMuted }}>Published products: {vendorProducts.length}</Text>
                 </View>
+              ) : isProductsLoading ? (
+                <View className="items-center py-10">
+                  <ActivityIndicator color={colors.primary} />
+                </View>
               ) : filteredVendorProducts.length === 0 ? (
                 <Text className="py-12 text-center text-[14px]" style={{ color: colors.textMuted }}>No products found for this vendor yet.</Text>
               ) : (
@@ -413,15 +399,16 @@ export default function VendorProfileScreen() {
                       item={item}
                       wishlisted={typeof item.id === "number" ? wishlistedProductIds.has(item.id) : false}
                       onToggleWishlist={(value) => void handleToggleWishlist(value)}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/product/[slug]",
+                          params: { slug: String(item.id ?? item.pid), name: item.title, price: formatMoney(item.price) },
+                        })
+                      }
                     />
                   ))}
                 </View>
               )}
-              {isLoadingMoreProducts ? (
-                <View className="items-center py-4">
-                  <ActivityIndicator color={colors.primary} />
-                </View>
-              ) : null}
             </>
           )}
         </View>
@@ -448,6 +435,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 });
+
 
 
 

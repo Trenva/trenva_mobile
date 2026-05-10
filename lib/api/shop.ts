@@ -411,6 +411,28 @@ function getApiOrigin() {
   }
 }
 
+function normalizeUrlForImage(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    // Encode each path segment safely (avoids spaces/special-char failures on Android release).
+    const normalizedPath = url.pathname
+      .split("/")
+      .map((segment) => {
+        if (!segment) return segment;
+        try {
+          return encodeURIComponent(decodeURIComponent(segment));
+        } catch {
+          return encodeURIComponent(segment);
+        }
+      })
+      .join("/");
+    url.pathname = normalizedPath;
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 function toThumbKey(value: string) {
   // URI-safe and runtime-safe across RN/web without relying on btoa/polyfills.
   return encodeURIComponent(value).replace(/%/g, "~");
@@ -418,10 +440,12 @@ function toThumbKey(value: string) {
 
 export function resolveMediaUrl(path?: string | null) {
   if (!path) return undefined;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return normalizeUrlForImage(path);
+  }
   const origin = getApiOrigin();
-  if (path.startsWith("/")) return `${origin}${path}`;
-  return `${origin}/${path}`;
+  const absolute = path.startsWith("/") ? `${origin}${path}` : `${origin}/${path}`;
+  return normalizeUrlForImage(absolute);
 }
 
 export function resolveMediaThumbUrl(
@@ -454,8 +478,9 @@ export function resolveProductCardImageUrl(path?: string | null) {
 
 export function formatMoney(value?: string | number | null) {
   const amount = Number(value ?? 0);
-  if (Number.isNaN(amount)) return "₦0";
-  return `₦ ${amount.toLocaleString()}`;
+  const naira = "\u20A6";
+  if (Number.isNaN(amount)) return `${naira}0`;
+  return `${naira} ${amount.toLocaleString()}`;
 }
 
 export async function getPublishedProducts() {
@@ -477,6 +502,50 @@ export async function getPublishedProductsPage(params?: {
     },
   });
   return unwrapPage(response.data);
+}
+
+export async function getPublishedProductsFiltered(params?: {
+  categoryTitle?: string;
+  categoryCid?: string;
+  subcategoryTitle?: string;
+  levelTwoTitle?: string;
+  vendorName?: string;
+  query?: string;
+  ordering?: string;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  minRating?: number | null;
+  color?: string;
+  inStock?: boolean;
+  sort?: "relevance" | "top_sales" | "most_recent" | "popular" | "price_asc" | "price_desc";
+}) {
+  const query: Record<string, string> = {
+    product_status: "published",
+  };
+  if (params?.categoryTitle) query.category_title = params.categoryTitle;
+  if (params?.categoryCid) query.category_cid = params.categoryCid;
+  if (params?.subcategoryTitle) query.subcategory_title = params.subcategoryTitle;
+  if (params?.levelTwoTitle) query.leveltwo_title = params.levelTwoTitle;
+  if (params?.vendorName) query.vendor_name = params.vendorName;
+  if (params?.query) query.q = params.query;
+  if (params?.ordering) query.ordering = params.ordering;
+  if (typeof params?.minPrice === "number") query.min_price = String(params.minPrice);
+  if (typeof params?.maxPrice === "number") query.max_price = String(params.maxPrice);
+  if (typeof params?.minRating === "number") query.min_rating = String(params.minRating);
+  if (params?.color) query.color = params.color;
+  if (typeof params?.inStock === "boolean") query.in_stock = String(params.inStock);
+  if (params?.sort && params.sort !== "relevance") query.sort = params.sort;
+  return fetchAllPages<ApiProduct>("/api/products/", query);
+}
+
+export async function getRelatedProductsById(productId: number, limit = 12) {
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(
+    `/api/products/${productId}/related/`,
+    {
+      params: { limit },
+    },
+  );
+  return unwrapResults(response.data);
 }
 
 function isPublishedProduct(product?: Partial<ApiProduct> | null) {
@@ -656,6 +725,11 @@ export async function getVendors() {
   return data;
 }
 
+export async function getVendorByVid(vid: string) {
+  const response = await apiClient.get<ApiVendor>(`/api/vendors/${vid}/`);
+  return response.data;
+}
+
 export async function getProductReviews(productId: number) {
   return fetchAllPages<ApiProductReview>("/api/reviews/", { product: productId });
 }
@@ -680,20 +754,34 @@ export async function getCategories() {
   return data;
 }
 
-export async function getSubcategories() {
-  const cacheKey = "public:subcategories";
+export async function getSubcategories(params?: {
+  categoryTitle?: string;
+  categoryCid?: string;
+}) {
+  const cacheKey = `public:subcategories:${params?.categoryTitle ?? ""}:${params?.categoryCid ?? ""}`;
   const cached = getCached<ApiSubCategory[]>(cacheKey);
   if (cached) return cached;
-  const data = await fetchAllPages<ApiSubCategory>("/api/subcategories/");
+  const query: Record<string, string> = {};
+  if (params?.categoryTitle) query.category_title = params.categoryTitle;
+  if (params?.categoryCid) query.category_cid = params.categoryCid;
+  const data = await fetchAllPages<ApiSubCategory>("/api/subcategories/", query);
   setCached(cacheKey, data, 5 * 60_000);
   return data;
 }
 
-export async function getLevelTwoCategories() {
-  const cacheKey = "public:leveltwo-categories";
+export async function getLevelTwoCategories(params?: {
+  categoryTitle?: string;
+  categoryCid?: string;
+  subcategoryTitle?: string;
+}) {
+  const cacheKey = `public:leveltwo-categories:${params?.categoryTitle ?? ""}:${params?.categoryCid ?? ""}:${params?.subcategoryTitle ?? ""}`;
   const cached = getCached<ApiLevelTwoCategory[]>(cacheKey);
   if (cached) return cached;
-  const data = await fetchAllPages<ApiLevelTwoCategory>("/api/leveltwo-categories/");
+  const query: Record<string, string> = {};
+  if (params?.categoryTitle) query.category_title = params.categoryTitle;
+  if (params?.categoryCid) query.category_cid = params.categoryCid;
+  if (params?.subcategoryTitle) query.subcategory_title = params.subcategoryTitle;
+  const data = await fetchAllPages<ApiLevelTwoCategory>("/api/leveltwo-categories/", query);
   setCached(cacheKey, data, 5 * 60_000);
   return data;
 }

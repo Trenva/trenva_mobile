@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -50,6 +50,7 @@ function AddressCard({
 }
 
 export default function SavedAddressesScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
@@ -114,7 +115,7 @@ export default function SavedAddressesScreen() {
         }
       >
         <View className="flex-row items-center justify-between px-5 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
-          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
             <BackIcon />
           </Pressable>
           <Text className="text-[22px] font-semibold" style={{ color: colors.text }}>Saved Addresses</Text>
@@ -148,6 +149,7 @@ export default function SavedAddressesScreen() {
     </View>
   );
 }
+
 
 
 

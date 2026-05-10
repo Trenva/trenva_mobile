@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
@@ -75,19 +75,25 @@ function Field({
 }
 
 export default function EditProfileScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [initialSnapshot, setInitialSnapshot] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    dateOfBirth: "",
+  });
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showGenderMenu, setShowGenderMenu] = useState(false);
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [dobDate, setDobDate] = useState<Date>(new Date(2000, 0, 1));
 
@@ -110,13 +116,20 @@ export default function EditProfileScreen() {
           (typeof data.phone_number === "string" && data.phone_number) ||
           "";
         setPhone(profilePhone);
-        setGender(typeof data.gender === "string" ? data.gender : "");
 
         const profileDob =
+          (typeof data.birthday === "string" && data.birthday) ||
           (typeof data.date_of_birth === "string" && data.date_of_birth) ||
           (typeof data.dob === "string" && data.dob) ||
           "";
         setDateOfBirth(profileDob);
+        setInitialSnapshot({
+          firstName: typeof data.first_name === "string" ? data.first_name : "",
+          lastName: typeof data.last_name === "string" ? data.last_name : "",
+          email: typeof data.email === "string" ? data.email : "",
+          phone: profilePhone,
+          dateOfBirth: profileDob,
+        });
         if (profileDob) {
           const parsed = new Date(profileDob);
           if (!Number.isNaN(parsed.getTime())) setDobDate(parsed);
@@ -154,12 +167,19 @@ export default function EditProfileScreen() {
         (typeof data.phone_number === "string" && data.phone_number) ||
         "";
       setPhone(profilePhone);
-      setGender(typeof data.gender === "string" ? data.gender : "");
       const profileDob =
+        (typeof data.birthday === "string" && data.birthday) ||
         (typeof data.date_of_birth === "string" && data.date_of_birth) ||
         (typeof data.dob === "string" && data.dob) ||
         "";
       setDateOfBirth(profileDob);
+      setInitialSnapshot({
+        firstName: typeof data.first_name === "string" ? data.first_name : "",
+        lastName: typeof data.last_name === "string" ? data.last_name : "",
+        email: typeof data.email === "string" ? data.email : "",
+        phone: profilePhone,
+        dateOfBirth: profileDob,
+      });
       if (profileDob) {
         const parsed = new Date(profileDob);
         if (!Number.isNaN(parsed.getTime())) setDobDate(parsed);
@@ -189,20 +209,21 @@ export default function EditProfileScreen() {
     const payload: Partial<UserProfile> = {};
     const firstNameTrim = firstName.trim();
     const lastNameTrim = lastName.trim();
-    const emailTrim = email.trim();
     const phoneTrim = phone.trim();
-    const genderTrim = gender.trim();
     const dobTrim = dateOfBirth.trim();
 
-    if (firstNameTrim !== (profile.first_name ?? "")) payload.first_name = firstNameTrim;
-    if (lastNameTrim !== (profile.last_name ?? "")) payload.last_name = lastNameTrim;
-    if (emailTrim && emailTrim !== (profile.email ?? "")) payload.email = emailTrim;
+    if (firstNameTrim !== initialSnapshot.firstName) payload.first_name = firstNameTrim;
+    if (lastNameTrim !== initialSnapshot.lastName) payload.last_name = lastNameTrim;
 
-    if ("phone" in profile && phoneTrim !== String(profile.phone ?? "")) payload.phone = phoneTrim;
-    if ("phone_number" in profile && phoneTrim !== String(profile.phone_number ?? "")) payload.phone_number = phoneTrim;
-    if ("gender" in profile && genderTrim !== String(profile.gender ?? "")) payload.gender = genderTrim;
-    if ("date_of_birth" in profile && dobTrim !== String(profile.date_of_birth ?? "")) payload.date_of_birth = dobTrim;
-    if ("dob" in profile && dobTrim !== String(profile.dob ?? "")) payload.dob = dobTrim;
+    if (phoneTrim !== initialSnapshot.phone) {
+      payload.phone = phoneTrim;
+      payload.phone_number = phoneTrim;
+    }
+    if (dobTrim !== initialSnapshot.dateOfBirth) {
+      payload.birthday = dobTrim;
+      payload.date_of_birth = dobTrim;
+      payload.dob = dobTrim;
+    }
 
     if (Object.keys(payload).length === 0) {
       notifyInfo("No changes", "Update a field before saving.");
@@ -214,7 +235,7 @@ export default function EditProfileScreen() {
       const updated = await updateProfile(payload);
       setProfile(updated);
       notifySuccess("Profile updated", "Your profile has been updated.");
-      router.back();
+      goBackOr(router, "/(tabs)/profile");
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
@@ -229,19 +250,22 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[0]}
         contentContainerStyle={{ paddingBottom: 26 }}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void refreshProfile()} />}
       >
         <View className="flex-row items-center justify-between px-5 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
-          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+          <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
             <BackIcon />
           </Pressable>
           <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Edit Profile</Text>
-          <View className="h-8 w-8 items-center justify-center">
+          <View className="h-8 w-8 items-center justify-center" hitSlop={12}>
             <TrashIcon color={colors.textMuted} />
           </View>
         </View>
@@ -252,9 +276,10 @@ export default function EditProfileScreen() {
           <Field
             label="Email"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={() => {}}
             placeholder="name@email.com"
             keyboardType="email-address"
+            right={<Text className="text-[12px]" style={{ color: colors.textMuted }}>Verified</Text>}
           />
           <Field
             label="Phone Number"
@@ -263,20 +288,6 @@ export default function EditProfileScreen() {
             placeholder="08012345678"
             keyboardType="phone-pad"
           />
-          <View className="mb-4">
-            <Text className="mb-2 text-[16px]" style={{ color: colors.text }}>Gender</Text>
-            <Pressable
-              onPress={() => setShowGenderMenu(true)}
-              className="flex-row items-center rounded-2xl border px-3 py-4"
-              style={{ borderColor: colors.border, backgroundColor: colors.card }}
-            >
-              <Text className="flex-1 text-[16px]" style={{ color: gender ? colors.text : colors.textMuted }}>
-                {gender || "Select gender"}
-              </Text>
-              <DownIcon color={colors.textMuted} />
-            </Pressable>
-          </View>
-
           <View className="mb-4">
             <Text className="mb-2 text-[16px]" style={{ color: colors.text }}>Date of Birth</Text>
             <Pressable
@@ -325,38 +336,6 @@ export default function EditProfileScreen() {
             />
           ) : null}
 
-          <Modal
-            visible={showGenderMenu}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowGenderMenu(false)}
-          >
-            <Pressable
-              className="flex-1 items-center justify-center bg-black/35 px-6"
-              onPress={() => setShowGenderMenu(false)}
-            >
-              <View className="w-full max-w-[340px] overflow-hidden rounded-2xl" style={{ backgroundColor: colors.card }}>
-                <View className="border-b px-4 py-3" style={{ borderColor: colors.border }}>
-                  <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>Select gender</Text>
-                </View>
-                {["Male", "Female"].map((option) => (
-                  <Pressable
-                    key={option}
-                    onPress={() => {
-                      setGender(option);
-                      setShowGenderMenu(false);
-                    }}
-                    className="px-4 py-4"
-                  >
-                    <Text className={`text-[15px] ${gender === option ? "font-semibold text-primary" : ""}`} style={gender === option ? undefined : { color: colors.text }}>
-                      {option}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </Pressable>
-          </Modal>
-
           <Pressable
             onPress={handleSave}
             disabled={!canSubmit}
@@ -369,9 +348,10 @@ export default function EditProfileScreen() {
           </Pressable>
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
 
 
 

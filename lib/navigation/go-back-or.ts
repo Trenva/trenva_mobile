@@ -4,9 +4,12 @@ import type { Href } from "expo-router";
 type RouterLike = {
   back: () => void;
   replace: (href: Href) => void;
+  canGoBack?: () => boolean;
 };
 
 export function goBackOr(router: RouterLike, fallback: Href = "/(tabs)") {
+  const canGoBack = typeof router.canGoBack === "function" ? router.canGoBack() : false;
+
   if (Platform.OS === "web") {
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
@@ -16,6 +19,10 @@ export function goBackOr(router: RouterLike, fallback: Href = "/(tabs)") {
     return;
   }
 
-  router.back();
-}
+  if (canGoBack) {
+    router.back();
+    return;
+  }
 
+  router.replace(fallback);
+}

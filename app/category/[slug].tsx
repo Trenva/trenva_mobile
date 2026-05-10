@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 import {
   AllProductsCard,
-  BackDarkIcon,
   CategorySearchBar,
   SubcategorySection,
 } from "../../components/ui/category-ui";
@@ -16,13 +16,14 @@ import {
   type ApiSubCategory,
   getCategories,
   getLevelTwoCategories,
-  getPublishedProducts,
+  getPublishedProductsFiltered,
   getSubcategories,
   resolveProductCardImageUrl,
 } from "../../lib/api/shop";
 import { notifyError } from "../../lib/ui/notify";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 type DetailSection = {
   title: string;
@@ -36,6 +37,14 @@ function normalize(value?: string | null) {
 function toIcon(label: string) {
   const firstChar = (label?.trim()?.charAt(0) ?? "C").toUpperCase();
   return firstChar;
+}
+
+function ThemedBackIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Path d="M15 6L9 12L15 18" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
 }
 
 function resolveCategoryTitle(paramsTitle: string | undefined, slug: string | undefined, categories: ApiCategory[]) {
@@ -110,6 +119,7 @@ function buildSections({
 }
 
 export default function CategoryDetailScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const { slug, title } = useLocalSearchParams<{ slug?: string; title?: string }>();
@@ -122,14 +132,23 @@ export default function CategoryDetailScreen() {
   async function loadCategoryDetails(showLoader = true) {
     try {
       if (showLoader) setIsLoading(true);
-      const [categories, subcategories, levelTwoCategories, products] = await Promise.all([
+      const [categories, subcategories, levelTwoCategories] = await Promise.all([
         getCategories(),
-        getSubcategories(),
-        getLevelTwoCategories(),
-        getPublishedProducts(),
+        getSubcategories({
+          categoryTitle: title,
+          categoryCid: slug,
+        }),
+        getLevelTwoCategories({
+          categoryTitle: title,
+          categoryCid: slug,
+        }),
       ]);
 
       const resolvedTitle = resolveCategoryTitle(title, slug, categories);
+      const products = await getPublishedProductsFiltered({
+        categoryTitle: resolvedTitle,
+        categoryCid: slug,
+      });
       const resolvedSections = buildSections({
         categoryTitle: resolvedTitle,
         subcategories,
@@ -170,8 +189,8 @@ export default function CategoryDetailScreen() {
       >
         <View style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }} className="px-5 pb-3">
           <View className="flex-row items-center gap-3">
-            <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
-              <BackDarkIcon />
+            <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={ICON_HIT_SLOP}>
+              <ThemedBackIcon color={colors.text} />
             </Pressable>
 
             <View className="flex-1">

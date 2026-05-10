@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import {
   AuthCard,
   AuthField,
@@ -18,6 +20,8 @@ import { checkEmailExists, register } from "../../lib/api/auth";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function SignupScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -93,13 +97,16 @@ export default function SignupScreen() {
     <KeyboardAvoidingView
       className="flex-1 bg-gray-100"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
       <StatusBar style="light" />
       <ScrollView
         bounces={false}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 }}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom + 140, 180) }}
       >
         <AuthHeader
           title="Sign Up"
@@ -107,7 +114,7 @@ export default function SignupScreen() {
           promptActionText="Log In"
           onPromptAction={() => router.push("/(auth)/login")}
           showBack
-          onBackPress={() => router.back()}
+          onBackPress={() => goBackOr(router, "/(auth)/login")}
         />
 
         <AuthCard>

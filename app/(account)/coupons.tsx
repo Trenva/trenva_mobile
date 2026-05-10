@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
@@ -47,23 +47,29 @@ function OrdersTabIcon({ active }: { active: boolean }) {
   );
 }
 
-function BottomQuickNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
+function BottomQuickNav({
+  colors,
+  onNavigate,
+}: {
+  colors: ReturnType<typeof useAppTheme>["colors"];
+  onNavigate: (path: "/(tabs)" | "/(tabs)/cart" | "/(tabs)/wishlist" | "/orders" | "/(tabs)/profile") => void;
+}) {
   return (
     <View className="px-4 pb-3 pt-2">
       <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
-        <Pressable onPress={() => router.push("/(tabs)")}>
+        <Pressable onPress={() => onNavigate("/(tabs)")}>
           <TabIcon routeName="index" color="#D4A04A" />
         </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/cart")}>
+        <Pressable onPress={() => onNavigate("/(tabs)/cart")}>
           <TabIcon routeName="cart" color="#D4A04A" />
         </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/wishlist")}>
+        <Pressable onPress={() => onNavigate("/(tabs)/wishlist")}>
           <TabIcon routeName="wishlist" color="#D4A04A" />
         </Pressable>
-        <Pressable onPress={() => router.push("/orders")}>
+        <Pressable onPress={() => onNavigate("/orders")}>
           <OrdersTabIcon active />
         </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/profile")}>
+        <Pressable onPress={() => onNavigate("/(tabs)/profile")}>
           <TabIcon routeName="profile" color="#D4A04A" />
         </Pressable>
       </View>
@@ -140,6 +146,7 @@ function CouponCard({
 }
 
 export default function CouponsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"unused" | "expired">("unused");
@@ -281,11 +288,11 @@ export default function CouponsScreen() {
         className="flex-row items-center justify-between px-4"
         style={{ paddingTop: Math.max(insets.top + 4, 12) }}
       >
-        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <BackIcon />
         </Pressable>
         <Text className="text-center text-[24px] font-medium leading-8" style={{ color: colors.text }}>Coupon</Text>
-        <Pressable onPress={() => router.push("/help-center")} className="h-8 w-8 items-center justify-center">
+        <Pressable onPress={() => router.push("/help-center")} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <HelpIcon color={colors.textMuted} />
         </Pressable>
       </View>
@@ -357,10 +364,11 @@ export default function CouponsScreen() {
         </View>
       </ScrollView>
 
-      <BottomQuickNav colors={colors} />
+      <BottomQuickNav colors={colors} onNavigate={(path) => router.push(path)} />
     </View>
   );
 }
+
 
 
 

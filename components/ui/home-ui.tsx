@@ -71,7 +71,7 @@ export function SectionTitle({
         {title}
       </Text>
       {hideViewAll ? null : (
-        <Pressable className="flex-row items-center gap-1" onPress={onPressViewAll}>
+        <Pressable className="flex-row items-center gap-1" onPress={onPressViewAll} hitSlop={12}>
           <Text className="text-xs font-medium" style={[fontStyles.medium, { color: colors.textMuted }]}>
             {viewAllLabel}
           </Text>

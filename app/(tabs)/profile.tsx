@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -51,6 +51,7 @@ function ProfileMenuRow({
 }
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -140,7 +141,7 @@ export default function ProfileScreen() {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <View className="flex-row items-center px-3 pb-1" style={{ paddingTop: Math.max(insets.top + 4, 12) }}>
-        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+        <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
           <BackIcon color={colors.text} />
         </Pressable>
         <Text className="flex-1 text-center text-[24px] font-medium" style={[fontStyles.semibold, { color: colors.text }]}>
@@ -240,6 +241,7 @@ export default function ProfileScreen() {
     </View>
   );
 }
+
 
 
 

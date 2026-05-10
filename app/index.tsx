@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { Image, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { getAccessToken } from "../lib/auth/tokens";
 import Animated, {
   Easing,
   interpolateColor,
@@ -16,6 +17,7 @@ const cartLogo = require("../assets/cart-logo.png");
 const nameLogo = require("../assets/name-logo.png");
 
 export default function SplashScreen() {
+  const router = useRouter();
   const cartOpacity = useSharedValue(1);
   const cartScale = useSharedValue(0.72);
   const logoOpacity = useSharedValue(0);
@@ -58,11 +60,18 @@ export default function SplashScreen() {
     );
 
     const timer = setTimeout(() => {
-      router.replace("/(auth)/onboarding");
+      void (async () => {
+        const token = await getAccessToken();
+        if (token) {
+          router.replace("/(tabs)");
+          return;
+        }
+        router.replace("/(auth)/onboarding");
+      })();
     }, 3100);
 
     return () => clearTimeout(timer);
-  }, [backgroundProgress, cartOpacity, cartScale, logoOpacity]);
+  }, [backgroundProgress, cartOpacity, cartScale, logoOpacity, router]);
 
   const containerStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(

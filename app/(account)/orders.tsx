@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
 import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
-import { TabIcon } from "../../components/ui/home-ui";
 import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
@@ -17,22 +16,13 @@ import {
   type ApiProduct,
   formatMoney,
   getOrders,
-  getPublishedProducts,
+  getPublishedProductsFiltered,
   isExplicitlyOutOfStock,
   resolveProductCardImageUrl,
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-
-function OrdersTabIcon({ active }: { active: boolean }) {
-  const color = active ? "#FF9F0A" : "#D4A04A";
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path d="M5 5H19V19H5V5Z" stroke={color} strokeWidth={1.8} />
-      <Path d="M8 9H16M8 12H16M8 15H13" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function Star({
   active,
@@ -43,35 +33,11 @@ function Star({
 }) {
   const { colors } = useAppTheme();
   return (
-    <Pressable onPress={onPress} className="px-1 py-1">
+    <Pressable onPress={onPress} className="px-1 py-1" hitSlop={ICON_HIT_SLOP}>
       <Text className={`text-[24px] ${active ? "text-primary" : ""}`} style={active ? undefined : { color: colors.textMuted }}>
         ★
       </Text>
     </Pressable>
-  );
-}
-
-function BottomOrdersNav({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
-  return (
-    <View className="px-4 pb-4 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
-        <Pressable onPress={() => router.push("/(tabs)")}>
-          <TabIcon routeName="index" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/cart")}>
-          <TabIcon routeName="cart" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/wishlist")}>
-          <TabIcon routeName="wishlist" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => router.push("/orders")}>
-          <OrdersTabIcon active />
-        </Pressable>
-        <Pressable onPress={() => router.push("/(tabs)/profile")}>
-          <TabIcon routeName="profile" color="#D4A04A" />
-        </Pressable>
-      </View>
-    </View>
   );
 }
 
@@ -122,7 +88,7 @@ function ActiveCard({
           <Text className="text-[15px]" style={{ color: colors.text }}>{item.name}</Text>
           <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
-        <Pressable onPress={() => onTrack(item)} className="rounded-full bg-primary px-4 py-2">
+        <Pressable onPress={() => onTrack(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
           <Text className="text-[14px]" style={{ color: colors.background }}>Track Order</Text>
         </Pressable>
       </View>
@@ -147,7 +113,7 @@ function CompletedCard({
           <Text className="text-[15px]" style={{ color: colors.text }}>{item.name}</Text>
           <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
-        <Pressable onPress={() => onLeaveReview(item)} className="rounded-full bg-primary px-4 py-2">
+        <Pressable onPress={() => onLeaveReview(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
           <Text className="text-[14px]" style={{ color: colors.background }}>Leave Review</Text>
         </Pressable>
       </View>
@@ -179,7 +145,7 @@ function CancelledCard({
           <Text className="mt-1 text-[15px]" style={{ color: colors.textMuted }}>On {item.date}</Text>
           <Text className="mt-1 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
         </View>
-        <Pressable onPress={() => onReorder(item)} className="rounded-full bg-primary px-4 py-2">
+        <Pressable onPress={() => onReorder(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
           <Text className="text-[14px]" style={{ color: colors.background }}>Re - Order</Text>
         </Pressable>
       </View>
@@ -188,6 +154,7 @@ function CancelledCard({
 }
 
 export default function OrdersScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"active" | "completed" | "cancelled">("active");
@@ -201,41 +168,6 @@ export default function OrdersScreen() {
   const [reviewText, setReviewText] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-
-  async function loadOrders(showLoader = true) {
-    try {
-      if (showLoader) setIsLoading(true);
-      const [ordersData, productsData] = await Promise.all([getOrders(), getPublishedProducts()]);
-      setOrders(ordersData);
-      setProducts(productsData);
-      setErrorText(null);
-    } catch (error) {
-      if (isUnauthorizedError(error)) {
-        await clearAuthTokens();
-        notifyError("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
-        return;
-      }
-      setOrders([]);
-      setProducts([]);
-      setErrorText(getApiErrorMessage(error, "Unable to load orders right now."));
-    } finally {
-      if (showLoader) setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    let mounted = true;
-    async function bootstrap() {
-      await loadOrders(true);
-      if (!mounted) return;
-    }
-    void bootstrap();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const flattenedRows = useMemo(() => {
     const rows: Array<OrderRow> = [];
@@ -280,6 +212,75 @@ export default function OrdersScreen() {
     }
     return rows;
   }, [orders]);
+
+  async function loadOrders(showLoader = true) {
+    try {
+      if (showLoader) setIsLoading(true);
+      const ordersData = await getOrders();
+      setOrders(ordersData);
+      setErrorText(null);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        await clearAuthTokens();
+        notifyError("Session expired", "Please log in again.");
+        router.replace("/(auth)/login");
+        return;
+      }
+      setOrders([]);
+      setProducts([]);
+      setErrorText(getApiErrorMessage(error, "Unable to load orders right now."));
+    } finally {
+      if (showLoader) setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    async function bootstrap() {
+      await loadOrders(true);
+      if (!mounted) return;
+    }
+    void bootstrap();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function hydrateOrderProducts() {
+      const uniqueNames = Array.from(
+        new Set(
+          flattenedRows
+            .map((row) => row.name?.trim())
+            .filter((name): name is string => Boolean(name && name.length > 0 && name.toLowerCase() !== "order")),
+        ),
+      ).slice(0, 24);
+      if (uniqueNames.length === 0) {
+        if (mounted) setProducts([]);
+        return;
+      }
+      try {
+        const results = await Promise.all(
+          uniqueNames.map((name) => getPublishedProductsFiltered({ query: name })),
+        );
+        if (!mounted) return;
+        const byTitle = new Map<string, ApiProduct>();
+        results.flat().forEach((product) => {
+          const key = (product.title ?? "").trim().toLowerCase();
+          if (key && !byTitle.has(key)) byTitle.set(key, product);
+        });
+        setProducts(Array.from(byTitle.values()));
+      } catch {
+        if (mounted) setProducts([]);
+      }
+    }
+    void hydrateOrderProducts();
+    return () => {
+      mounted = false;
+    };
+  }, [flattenedRows]);
 
   const activeRows = useMemo(
     () =>
@@ -398,7 +399,7 @@ export default function OrdersScreen() {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <View className="flex-row items-center px-3" style={{ paddingTop: Math.max(insets.top + 4, 12) }}>
-        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}>
           <BackIcon />
         </Pressable>
         <Text className="flex-1 text-center text-[25px] font-medium" style={{ color: colors.text }}>My Orders</Text>
@@ -505,7 +506,8 @@ export default function OrdersScreen() {
         </View>
       </Modal>
 
-      <BottomOrdersNav colors={colors} />
     </View>
   );
 }
+
+

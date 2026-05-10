@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
@@ -87,6 +88,7 @@ function PaymentRow({
 }
 
 export default function PaymentsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState("paystack");
@@ -135,7 +137,7 @@ export default function PaymentsScreen() {
         className="flex-row items-center justify-between px-4 pb-2"
         style={{ paddingTop: Math.max(insets.top + 4, 12) }}
       >
-        <Pressable onPress={() => router.back()} className="h-8 w-8 items-center justify-center">
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Payments</Text>
@@ -193,3 +195,4 @@ export default function PaymentsScreen() {
     </View>
   );
 }
+

@@ -13,7 +13,7 @@ export function CachedImage({ uri, style, contentFit = "cover", className }: Cac
   return (
     <ImageAny
       source={{ uri }}
-      style={style as StyleProp<ImageStyle>}
+      style={[{ width: "100%", height: "100%" }, style] as StyleProp<ImageStyle>}
       className={className}
       contentFit={contentFit}
       cachePolicy="memory-disk"

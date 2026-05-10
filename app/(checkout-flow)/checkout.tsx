@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { Linking } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Rect } from "react-native-svg";
@@ -33,6 +33,7 @@ function CardIcon() {
 }
 
 export default function CheckoutScreen() {
+  const router = useRouter();
   const { colors, mode } = useAppTheme();
   const insets = useSafeAreaInsets();
   const selectedAddress = useCheckoutStore((state) => state.selectedAddress);
@@ -226,12 +227,12 @@ export default function CheckoutScreen() {
   }
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View
         className="flex-row items-center justify-between px-4 pb-2"
         style={{ paddingTop: Math.max(insets.top + 4, 12) }}
       >
-        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Check out</Text>
@@ -249,6 +250,9 @@ export default function CheckoutScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         className="px-4"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -392,9 +396,10 @@ export default function CheckoutScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
 
 
 

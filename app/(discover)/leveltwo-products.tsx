@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { applyProductFilters } from "../../lib/search/product-filters";
-import { formatMoney, getPublishedProductsPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsFiltered, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
 import { CachedImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
+import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
 
-function normalize(value?: string | null) {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function ProductCard({ item }: { item: ApiProduct }) {
+function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -25,7 +22,7 @@ function ProductCard({ item }: { item: ApiProduct }) {
   const imageUrl = resolveProductCardImageUrl(item.image);
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: String(item.id ?? item.pid), name: item.title, price } })}
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -57,6 +54,7 @@ function ProductCard({ item }: { item: ApiProduct }) {
 }
 
 export default function LevelTwoProductsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -68,8 +66,6 @@ export default function LevelTwoProductsScreen() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const filters = useProductFilterStore();
   const resetFilters = useProductFilterStore((state) => state.resetFilters);
@@ -81,19 +77,14 @@ export default function LevelTwoProductsScreen() {
   const loadInitial = useCallback(async () => {
     try {
       setIsLoading(true);
-      const page = await getPublishedProductsPage({ page: 1 });
-      setProducts(
-        page.results.filter(
-          (p) =>
-            normalize(p.category) === normalize(categoryTitle) &&
-            normalize(p.subcategory) === normalize(subcategoryTitle) &&
-            normalize(p.leveltwocategory) === normalize(levelTwoTitle),
-        ),
-      );
-      setNextUrl(page.next);
+      const rows = await getPublishedProductsFiltered({
+        categoryTitle,
+        subcategoryTitle,
+        levelTwoTitle,
+      });
+      setProducts(rows);
     } catch {
       setProducts([]);
-      setNextUrl(null);
       notifyError("Level-two failed", "Unable to load level-two products right now.");
     } finally {
       setIsLoading(false);
@@ -103,36 +94,6 @@ export default function LevelTwoProductsScreen() {
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
-
-  async function loadMore() {
-    if (!nextUrl || isLoadingMore || isLoading) return;
-    try {
-      setIsLoadingMore(true);
-      const page = await getPublishedProductsPage({ nextUrl });
-      setProducts((prev) => [
-        ...prev,
-        ...page.results.filter(
-          (p) =>
-            normalize(p.category) === normalize(categoryTitle) &&
-            normalize(p.subcategory) === normalize(subcategoryTitle) &&
-            normalize(p.leveltwocategory) === normalize(levelTwoTitle),
-        ),
-      ]);
-      setNextUrl(page.next);
-    } catch {
-      notifyError("Load failed", "Unable to load more products.");
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }
-
-  function handleScroll(event: any) {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-    if (remaining < 180) {
-      void loadMore();
-    }
-  }
 
   const filteredProducts = useMemo(
     () =>
@@ -161,15 +122,13 @@ export default function LevelTwoProductsScreen() {
             }}
           />
         }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
       >
         <View
           className="px-4 pb-2"
           style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
         >
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}><BackIcon /></Pressable>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}><BackIcon /></Pressable>
             <View className="flex-row items-center gap-4">
               <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
               <BellDarkIcon />
@@ -194,7 +153,7 @@ export default function LevelTwoProductsScreen() {
 
         <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-6">
           {isLoading ? (
-            <View className="py-4"><LoadingListSkeleton rows={3} /></View>
+            <View className="py-4"><ProductGridSkeleton rows={3} /></View>
           ) : filteredProducts.length === 0 ? (
             <View className="py-12">
               <Text className="text-center text-[14px]" style={{ color: colors.textMuted }}>No products available right now.</Text>
@@ -204,17 +163,24 @@ export default function LevelTwoProductsScreen() {
             </View>
           ) : (
             <View className="flex-row flex-wrap justify-between">
-              {filteredProducts.map((item) => <ProductCard key={String(item.id ?? item.pid)} item={item} />)}
+              {filteredProducts.map((item) => (
+                <ProductCard
+                  key={String(item.id ?? item.pid)}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: String(item.id ?? item.pid), name: item.title, price: formatMoney(item.price) },
+                    })
+                  }
+                />
+              ))}
             </View>
           )}
-          {isLoadingMore ? (
-            <View className="items-center py-4">
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : null}
         </View>
       </ScrollView>
     </View>
   );
 }
+
 

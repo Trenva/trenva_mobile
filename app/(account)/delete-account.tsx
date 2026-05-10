@@ -1,5 +1,5 @@
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -29,17 +29,18 @@ function SadIcon() {
 }
 
 export default function DeleteAccountScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]} contentContainerStyle={{ paddingBottom: 24 }}>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]} keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingBottom: 24 }}>
         <View className="px-5 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
           <View className="flex-row items-center">
-            <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+            <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
               <BackIcon />
             </Pressable>
           </View>
@@ -88,9 +89,10 @@ export default function DeleteAccountScreen() {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
 
 
 

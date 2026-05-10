@@ -31,6 +31,7 @@ export function CartItem({
   onQuantityChange,
 }: CartItemProps) {
   const { colors } = useAppTheme();
+  const naira = "\u20A6";
 
   const isOutOfStock = stock === "Out of Stock";
   const isLowStock = stock.includes("left");
@@ -52,7 +53,7 @@ export function CartItem({
           </View>
 
           <Text className="mt-1 text-base font-bold" style={{ color: colors.text }}>
-            {`₹${price}`}
+            {`${naira}${price}`}
           </Text>
 
           <View className="mt-3 flex-row items-center justify-between">
@@ -80,6 +81,7 @@ export function CartItem({
 
 export function PriceDetails({ items, subtotal, discount, delivery, total }: PriceDetailsProps) {
   const { colors } = useAppTheme();
+  const naira = "\u20A6";
 
   return (
     <View className="mx-4 mt-2 mb-4 rounded-2xl px-5 py-5 shadow-sm" style={{ backgroundColor: colors.card }}>
@@ -89,24 +91,24 @@ export function PriceDetails({ items, subtotal, discount, delivery, total }: Pri
 
       <View className="mb-3 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>{`Price (${items} Items)`}</Text>
-        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${subtotal}`}</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`${naira}${subtotal}`}</Text>
       </View>
 
       <View className="mb-3 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Discount</Text>
-        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${discount}`}</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`${naira}${discount}`}</Text>
       </View>
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Delivery Charges</Text>
-        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`₹${delivery}`}</Text>
+        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`${naira}${delivery}`}</Text>
       </View>
 
       <View className="mb-4 h-px" style={{ backgroundColor: colors.border }} />
 
       <View className="flex-row items-center justify-between">
         <Text className="text-base font-bold" style={{ color: colors.text }}>Total Amount</Text>
-        <Text className="text-base font-bold" style={{ color: colors.text }}>{`₹${total}`}</Text>
+        <Text className="text-base font-bold" style={{ color: colors.text }}>{`${naira}${total}`}</Text>
       </View>
     </View>
   );

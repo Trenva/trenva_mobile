@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
@@ -10,6 +10,7 @@ import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { formatMoney, getTransactions, getWallets, type ApiTransaction } from "../../lib/api/shop";
 import { notifyError, notifyInfo } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function DownIcon() {
   return (
@@ -36,6 +37,7 @@ function toTransactionAmount(transaction: ApiTransaction) {
 }
 
 export default function WalletScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
@@ -119,7 +121,7 @@ export default function WalletScreen() {
         }
       >
         <View className="flex-row items-center px-3 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
-          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}>
             <BackIcon />
           </Pressable>
           <Text className="flex-1 text-center text-[24px] font-medium" style={{ color: colors.text }}>Trenva Wallet</Text>
@@ -196,7 +198,7 @@ export default function WalletScreen() {
 
           <View className="mt-12 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">Recent transactions</Text>
-            <Pressable onPress={() => void loadWallet(true)}>
+            <Pressable onPress={() => void loadWallet(true)} hitSlop={ICON_HIT_SLOP}>
               <Text className="text-[12px] underline" style={{ color: colors.textMuted }}>Refresh</Text>
             </Pressable>
           </View>
@@ -235,6 +237,8 @@ export default function WalletScreen() {
     </View>
   );
 }
+
+
 
 
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +25,7 @@ function LocationPinDarkIcon() {
 }
 
 export default function AddressScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
@@ -87,7 +88,7 @@ export default function AddressScreen() {
         className="flex-row items-center justify-between px-4 pb-2"
         style={{ paddingTop: Math.max(insets.top + 4, 12) }}
       >
-        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center">
+        <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Address</Text>
@@ -178,6 +179,7 @@ export default function AddressScreen() {
     </View>
   );
 }
+
 
 
 

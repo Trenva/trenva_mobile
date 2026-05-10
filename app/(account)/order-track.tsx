@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -36,6 +36,7 @@ function getStatusColor(status: string) {
 }
 
 export default function OrderTrackScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ oid?: string; status?: string; trackingId?: string }>();
@@ -82,7 +83,7 @@ export default function OrderTrackScreen() {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <View className="flex-row items-center px-3" style={{ paddingTop: Math.max(insets.top + 4, 12) }}>
-        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+        <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
           <BackIcon />
         </Pressable>
         <Text className="flex-1 text-center text-[24px] font-medium" style={{ color: colors.text }}>Track Order</Text>
@@ -134,6 +135,7 @@ export default function OrderTrackScreen() {
     </View>
   );
 }
+
 
 
 

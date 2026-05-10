@@ -99,7 +99,13 @@ function colorsForMode(mode: ThemeMode): ThemeColors {
   };
 }
 
-export function AppThemeProvider({ children }: { children: ReactNode }) {
+export function AppThemeProvider({
+  children,
+  forcedMode,
+}: {
+  children: ReactNode;
+  forcedMode?: ThemeMode;
+}) {
   const systemScheme = useColorScheme();
   const [preference, setPreferenceState] = useState<ThemePreference>("light");
 
@@ -122,7 +128,8 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const mode: ThemeMode = preference === "system" ? (systemScheme === "dark" ? "dark" : "light") : preference;
+  const resolvedMode: ThemeMode = preference === "system" ? (systemScheme === "dark" ? "dark" : "light") : preference;
+  const mode: ThemeMode = forcedMode ?? resolvedMode;
   const colors = useMemo(() => colorsForMode(mode), [mode]);
 
   async function setPreference(next: ThemePreference) {

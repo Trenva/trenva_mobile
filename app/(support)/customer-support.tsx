@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Rect } from "react-native-svg";
@@ -11,6 +11,7 @@ import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { createContactForm } from "../../lib/api/shop";
 import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 const SUPPORT_EMAIL = "contact.trenva@gmail.com";
 
@@ -70,6 +71,7 @@ function InputField({
 }
 
 export default function CustomerSupportScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState("");
@@ -140,15 +142,18 @@ export default function CustomerSupportScreen() {
   }
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[0]}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => setIsRefreshing(true)} />}
       >
         <View className="flex-row items-center px-3 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
-          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}>
             <BackIcon />
           </Pressable>
         </View>
@@ -202,9 +207,11 @@ export default function CustomerSupportScreen() {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+
 
 
 

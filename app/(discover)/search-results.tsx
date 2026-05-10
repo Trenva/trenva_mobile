@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
-import { formatMoney, getPublishedProductsPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsFiltered, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { applyProductFilters } from "../../lib/search/product-filters";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
 import { CachedImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
+import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
-function ResultCard({ item }: { item: ApiProduct }) {
+function ResultCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -22,12 +24,7 @@ function ResultCard({ item }: { item: ApiProduct }) {
 
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: String(item.id ?? item.pid), name: item.title, price },
-        })
-      }
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -63,6 +60,7 @@ function ResultCard({ item }: { item: ApiProduct }) {
 }
 
 export default function SearchResultsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -75,8 +73,6 @@ export default function SearchResultsScreen() {
   }>();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const {
     query: sharedQuery,
@@ -108,64 +104,59 @@ export default function SearchResultsScreen() {
   }, [category, leveltwo, query, setFilters, sharedCategory, sharedLevelTwo, sharedQuery, sharedSubcategory, subcategory]);
 
   const keyword = sharedQuery || sharedLevelTwo || sharedSubcategory || sharedCategory || "Products";
+  const minRatingFromReview = useMemo(() => {
+    const value = (review ?? "").toLowerCase();
+    if (value.includes("5")) return 5;
+    if (value.includes("4")) return 4;
+    if (value.includes("3")) return 3;
+    if (value.includes("2")) return 2;
+    if (value.includes("1")) return 1;
+    return null;
+  }, [review]);
 
   const loadInitial = useCallback(async () => {
     try {
       setIsLoading(true);
-      const page = await getPublishedProductsPage({ page: 1 });
-      setProducts(page.results);
-      setNextUrl(page.next);
+      const rows = await getPublishedProductsFiltered({
+        query: sharedQuery || undefined,
+        categoryTitle: sharedCategory || undefined,
+        subcategoryTitle: sharedSubcategory || undefined,
+        levelTwoTitle: sharedLevelTwo || undefined,
+        minPrice,
+        maxPrice,
+        minRating: minRatingFromReview,
+        color: color || undefined,
+        sort,
+      });
+      setProducts(rows);
     } catch {
       setProducts([]);
-      setNextUrl(null);
       notifyError("Search failed", "Unable to load products right now.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [color, maxPrice, minPrice, minRatingFromReview, sharedCategory, sharedLevelTwo, sharedQuery, sharedSubcategory, sort]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
 
-  async function loadMore() {
-    if (!nextUrl || isLoadingMore || isLoading) return;
-    try {
-      setIsLoadingMore(true);
-      const page = await getPublishedProductsPage({ nextUrl });
-      setProducts((prev) => [...prev, ...page.results]);
-      setNextUrl(page.next);
-    } catch {
-      notifyError("Load failed", "Unable to load more products.");
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }
-
-  function handleScroll(event: any) {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
-    if (remaining < 180) {
-      void loadMore();
-    }
-  }
-
   const filteredResults = useMemo(
     () =>
       applyProductFilters(products, {
-        query: sharedQuery,
-        category: sharedCategory,
-        subcategory: sharedSubcategory,
-        leveltwo: sharedLevelTwo,
-        color,
+        query: "",
+        category: "",
+        subcategory: "",
+        leveltwo: "",
+        color: "",
         review,
         location,
         resolution,
-        minPrice,
-        maxPrice,
-        sort,
+        minPrice: null,
+        maxPrice: null,
+        sort: "relevance",
       }),
-    [color, location, maxPrice, minPrice, products, resolution, review, sharedCategory, sharedLevelTwo, sharedQuery, sharedSubcategory, sort],
+    [location, products, resolution, review],
   );
 
   return (
@@ -183,19 +174,17 @@ export default function SearchResultsScreen() {
             }}
           />
         }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
       >
         <View
           style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
           className="px-4 pb-2"
         >
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}>
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
-              <Pressable onPress={() => router.push("/search")}>
+              <Pressable onPress={() => router.push("/search")} hitSlop={ICON_HIT_SLOP}>
                 <SearchGrayIcon />
               </Pressable>
               <BellDarkIcon />
@@ -226,7 +215,7 @@ export default function SearchResultsScreen() {
         <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-6">
           {isLoading ? (
             <View className="py-4">
-              <LoadingListSkeleton rows={3} />
+              <ProductGridSkeleton rows={3} />
             </View>
           ) : filteredResults.length === 0 ? (
             <View className="py-12">
@@ -238,17 +227,23 @@ export default function SearchResultsScreen() {
           ) : (
             <View className="flex-row flex-wrap justify-between">
               {filteredResults.map((item) => (
-                <ResultCard key={String(item.id ?? item.pid)} item={item} />
+                <ResultCard
+                  key={String(item.id ?? item.pid)}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: String(item.id ?? item.pid), name: item.title, price: formatMoney(item.price) },
+                    })
+                  }
+                />
               ))}
             </View>
           )}
-          {isLoadingMore ? (
-            <View className="items-center py-4">
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : null}
         </View>
       </ScrollView>
     </View>
   );
 }
+
+

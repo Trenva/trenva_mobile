@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { BackIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 const faqs = [
   {
@@ -86,7 +87,7 @@ function HelpCard({
   const gradientId = `helpCardGradient-${id}`;
 
   return (
-    <Pressable onPress={onPress} className="w-[48%] overflow-hidden rounded-[12px] px-3 py-3">
+    <Pressable onPress={onPress} className="w-[48%] overflow-hidden rounded-[12px] px-3 py-3" hitSlop={ICON_HIT_SLOP}>
       <View className="absolute inset-0">
         <Svg width="100%" height="100%" viewBox="0 0 210 120" preserveAspectRatio="none">
           <Defs>
@@ -124,6 +125,7 @@ function MinusIcon() {
 }
 
 export default function HelpCenterScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [openIndex, setOpenIndex] = useState(0);
@@ -158,10 +160,13 @@ export default function HelpCenterScreen() {
   }, [normalizedQuery, filteredFaqs.length]);
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background }}>
+    <KeyboardAvoidingView className="flex-1" style={{ backgroundColor: colors.background }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         stickyHeaderIndices={[0]}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={
           <RefreshControl
@@ -174,7 +179,7 @@ export default function HelpCenterScreen() {
         }
       >
         <View className="flex-row items-center px-3 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
-          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+          <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}>
             <BackIcon />
           </Pressable>
           <Text className="flex-1 text-center text-[24px]" style={{ color: colors.text }}>Trenva Help Center</Text>
@@ -230,7 +235,7 @@ export default function HelpCenterScreen() {
               const open = openIndex === index;
               return (
                 <View key={faq.question} className="border-b py-4" style={{ borderColor: colors.border }}>
-                  <Pressable onPress={() => setOpenIndex(open ? -1 : index)} className="flex-row items-center justify-between">
+                  <Pressable onPress={() => setOpenIndex(open ? -1 : index)} className="flex-row items-center justify-between" hitSlop={ICON_HIT_SLOP}>
                     <Text className="max-w-[85%] text-[18px] font-medium" style={{ color: colors.text }}>{faq.question}</Text>
                     {open ? <MinusIcon /> : <PlusIcon />}
                   </Pressable>
@@ -240,9 +245,11 @@ export default function HelpCenterScreen() {
             })}
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
+
+
 
 
 

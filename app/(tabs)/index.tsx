@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import {
@@ -23,8 +23,8 @@ import {
   getFlashSaleProductsPage,
   getFlashSales,
   isExplicitlyOutOfStock,
-  getPublishedProducts,
   getPublishedProductsPage,
+  getPublishedProductsFiltered,
   resolveProductCardImageUrl,
   getSliders,
   getWishlistItems,
@@ -38,6 +38,7 @@ import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image
 import { fontStyles } from "../../lib/ui/typography";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { HomeFeedSkeleton } from "../../components/ui/loading-skeleton";
+import { deleteCached } from "../../lib/cache/memory-cache";
 
 type ProductCardItem = {
   productId?: number;
@@ -50,6 +51,9 @@ type ProductCardItem = {
   inStock?: unknown;
   imageUrl?: string;
 };
+
+const HOME_ALL_PRODUCTS_MAX_PAGES = 3;
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function getSaleRemainingSeconds(sale?: { remaining_time?: { days?: number; hours?: number; minutes?: number; seconds?: number; expired?: boolean } }) {
   const remaining = sale?.remaining_time;
@@ -117,11 +121,13 @@ function PromoCard({
   compact = false,
   wishlisted,
   onToggleWishlist,
+  onPress,
 }: {
   item: ProductCardItem;
   compact?: boolean;
   wishlisted: boolean;
   onToggleWishlist: (item: ProductCardItem) => void;
+  onPress: () => void;
 }) {
   const { colors } = useAppTheme();
   const hasOldPrice = Boolean(item.oldPrice && item.oldPrice !== item.price);
@@ -129,12 +135,7 @@ function PromoCard({
   const isOutOfStock = isExplicitlyOutOfStock(item.inStock);
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: item.slug, name: item.name, price: item.price },
-        })
-      }
+      onPress={onPress}
       className={`rounded-[6px] ${compact ? "mr-2 w-[140px]" : "w-[168px]"}`}
       style={{ backgroundColor: colors.card }}
     >
@@ -150,7 +151,7 @@ function PromoCard({
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
           </View>
         ) : null}
-        <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)}>
+        <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)} hitSlop={ICON_HIT_SLOP}>
           {wishlisted ? <HeartFilledIcon /> : <HeartOutlineIcon />}
         </Pressable>
       </View>
@@ -176,7 +177,7 @@ function PromoCard({
 function CategoryChip({ title, imageUrl, onPress }: { title: string; imageUrl?: string; onPress?: () => void }) {
   const { colors } = useAppTheme();
   return (
-    <Pressable className="mr-4 items-center" onPress={onPress}>
+    <Pressable className="mr-4 items-center" onPress={onPress} hitSlop={ICON_HIT_SLOP}>
       <View className="h-[42px] w-[42px] items-center justify-center overflow-hidden rounded-full" style={{ backgroundColor: colors.elevated }}>
         {imageUrl ? (
           <CachedImage uri={imageUrl} className="h-full w-full" />
@@ -198,11 +199,13 @@ function ProductRow({
   compact = false,
   wishlistedProductIds,
   onToggleWishlist,
+  onProductPress,
 }: {
   items: ProductCardItem[];
   compact?: boolean;
   wishlistedProductIds: Set<number>;
   onToggleWishlist: (item: ProductCardItem) => void;
+  onProductPress: (item: ProductCardItem) => void;
 }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pl-4" contentContainerStyle={{ paddingRight: 16 }}>
@@ -212,6 +215,7 @@ function ProductRow({
           item={item}
           compact={compact}
           wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
+          onPress={() => onProductPress(item)}
           onToggleWishlist={onToggleWishlist}
         />
       ))}
@@ -220,9 +224,10 @@ function ProductRow({
 }
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { colors, mode } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const flashHeaderTextColor = mode === "dark" ? "#FFFFFF" : "#111827";
+  const flashHeaderTextColor = "#FFFFFF";
   const { width } = useWindowDimensions();
   const [heroWidth, setHeroWidth] = useState(Math.max(280, width - 32));
   const heroScrollRef = useRef<ScrollView | null>(null);
@@ -237,6 +242,7 @@ export default function HomeScreen() {
   const [featuredProducts, setFeaturedProducts] = useState<ProductCardItem[]>([]);
   const [saleProducts, setSaleProducts] = useState<ProductCardItem[]>([]);
   const [allProducts, setAllProducts] = useState<ProductCardItem[]>([]);
+  const [homeCategorySections, setHomeCategorySections] = useState<Array<{ category: ApiCategory; items: ProductCardItem[] }>>([]);
   const [wishlistedProductIds, setWishlistedProductIds] = useState<Set<number>>(new Set());
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationLabel, setLocationLabel] = useState("Location unavailable");
@@ -250,6 +256,23 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let isMounted = true;
+    async function getHomeProductsWindow() {
+      const collected: ApiProduct[] = [];
+      let page = 1;
+      let nextUrl: string | null = null;
+
+      while (page <= HOME_ALL_PRODUCTS_MAX_PAGES) {
+        const res: Awaited<ReturnType<typeof getPublishedProductsPage>> = nextUrl
+          ? await getPublishedProductsPage({ nextUrl })
+          : await getPublishedProductsPage({ page });
+        collected.push(...res.results);
+        nextUrl = res.next;
+        if (!nextUrl) break;
+        page += 1;
+      }
+      return collected;
+    }
+
     async function loadHomeData() {
       try {
         const [categoryResult, featuredResult, salesResult, saleProductsResult, productsResult, sliderResult, allProductsResult] = await Promise.allSettled([
@@ -259,7 +282,7 @@ export default function HomeScreen() {
           getFlashSaleProductsPage({ active: true, page: 1 }),
           getPublishedProductsPage({ page: 1 }),
           getSliders(),
-          getPublishedProducts(),
+          getHomeProductsWindow(),
         ]);
 
         const categoryData = categoryResult.status === "fulfilled" ? categoryResult.value : [];
@@ -303,11 +326,47 @@ export default function HomeScreen() {
               })
             : mappedFlashProducts;
 
+        const topHomeCategories = categoryData.slice(0, 10);
+        const categorySectionRows = await Promise.allSettled(
+          topHomeCategories.map(async (category) => {
+            let rows = await getPublishedProductsFiltered({
+              categoryTitle: category.title,
+            });
+            if (rows.length === 0 && category.cid) {
+              rows = await getPublishedProductsFiltered({
+                categoryCid: category.cid,
+              });
+            }
+            return {
+              category,
+              items: rows.slice(0, 10).map(mapProductToCard),
+            };
+          }),
+        );
+        const mappedSections = categorySectionRows
+          .map((result, index) => {
+            if (result.status === "fulfilled") return result.value;
+            const category = topHomeCategories[index];
+            if (!category) return null;
+            const fallbackItems = mappedProducts
+              .filter((product) => {
+                const key = product.categoryKey ?? "";
+                const normalizedTitle = category.title.toLowerCase();
+                return key === category.cid || key === normalizedTitle;
+              })
+              .slice(0, 10);
+            return { category, items: fallbackItems };
+          })
+          .filter((entry): entry is { category: ApiCategory; items: ProductCardItem[] } => Boolean(entry))
+          .filter((entry) => entry.items.length > 0)
+          .slice(0, 4);
+
         setCategories(categoryData);
         setSliders(sliderData.filter((row) => Boolean(row.image)));
         setFeaturedProducts((featuredPage.results.length ? featuredPage.results : productsPage.results).map(mapProductToCard));
         setSaleProducts(filteredFlashProducts);
         setAllProducts(mappedProducts);
+        setHomeCategorySections(mappedSections);
         setWishlistedProductIds(wishlistIds);
         setFeaturedNextUrl(featuredPage.next);
         setActiveFlashSaleIds(saleIds);
@@ -325,8 +384,12 @@ export default function HomeScreen() {
         setActiveFlashSaleIds([]);
         setFlashSaleRemainingSeconds(0);
         setFlashSaleEndsAtMs(null);
+        setHomeCategorySections([]);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     }
 
@@ -492,21 +555,7 @@ export default function HomeScreen() {
     return rows;
   }, [allProducts]);
 
-  const categorySections = useMemo(
-    () =>
-      categories
-        .map((category) => {
-          const normalizedTitle = category.title.toLowerCase();
-          const items = allProducts.filter((product) => {
-            const key = product.categoryKey ?? "";
-            return key === category.cid || key === normalizedTitle;
-          });
-          return { category, items };
-        })
-        .filter((entry) => entry.items.length > 0)
-        .slice(0, 4),
-    [allProducts, categories],
-  );
+  const categorySections = homeCategorySections;
   const hasActiveFlashSales = activeFlashSaleIds.length > 0 && saleProducts.length > 0;
   const flashCountdownLabel = formatCountdown(flashSaleRemainingSeconds);
 
@@ -533,8 +582,10 @@ export default function HomeScreen() {
             refreshing={isRefreshing}
             onRefresh={() => {
               setIsRefreshing(true);
+              deleteCached("public:sliders");
+              deleteCached("public:categories");
+              deleteCached("public:flash-sales:true:true");
               setReloadKey((prev) => prev + 1);
-              setTimeout(() => setIsRefreshing(false), 800);
             }}
           />
         }
@@ -609,6 +660,7 @@ export default function HomeScreen() {
                         setHeroIndex(index);
                         heroScrollRef.current?.scrollTo({ x: index * heroWidth, animated: true });
                       }}
+                      hitSlop={ICON_HIT_SLOP}
                       className="mx-1 rounded-full"
                       style={{
                         backgroundColor: heroIndex === index ? colors.primary : colors.border,
@@ -663,6 +715,7 @@ export default function HomeScreen() {
                   setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
                   router.push("/flash-sales");
                 }}
+                hitSlop={12}
               >
                 <Text className="text-[12px] font-semibold underline" style={[fontStyles.semibold, { color: flashHeaderTextColor }]}>
                   See All
@@ -682,6 +735,12 @@ export default function HomeScreen() {
                   items={saleProducts.slice(0, 10)}
                   compact
                   wishlistedProductIds={wishlistedProductIds}
+                  onProductPress={(item) =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: item.slug, name: item.name, price: item.price },
+                    })
+                  }
                   onToggleWishlist={handleToggleWishlist}
                 />
               </View>
@@ -697,6 +756,7 @@ export default function HomeScreen() {
                     setFilters({ query: "", category: "", subcategory: "", leveltwo: "" });
                     router.push("/featured");
                   }}
+                  hitSlop={12}
                 >
                   <Text className="text-[12px] font-semibold text-white" style={fontStyles.semibold}>
                     See All
@@ -710,6 +770,12 @@ export default function HomeScreen() {
                 items={(featuredProducts.length ? featuredProducts : allProducts).slice(0, 10)}
                 compact
                 wishlistedProductIds={wishlistedProductIds}
+                onProductPress={(item) =>
+                  router.push({
+                    pathname: "/product/[slug]",
+                    params: { slug: item.slug, name: item.name, price: item.price },
+                  })
+                }
                 onToggleWishlist={handleToggleWishlist}
               />
             </View>
@@ -725,13 +791,22 @@ export default function HomeScreen() {
                       subcategory: "",
                       leveltwo: "",
                     });
-                    router.push({ pathname: "/category-products", params: { category: category.title, title: category.title } });
+                    router.push({
+                      pathname: "/category-products",
+                      params: { category: category.title, title: category.title, cid: category.cid },
+                    });
                   }}
                 />
                 <ProductRow
                   items={items.slice(0, 10)}
                   compact
                   wishlistedProductIds={wishlistedProductIds}
+                  onProductPress={(item) =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: item.slug, name: item.name, price: item.price },
+                    })
+                  }
                   onToggleWishlist={handleToggleWishlist}
                 />
               </View>
@@ -744,7 +819,18 @@ export default function HomeScreen() {
                   {suggestedRows.map((row, rowIndex) => (
                     <View key={`suggested-row-${rowIndex}`} className={`${rowIndex < suggestedRows.length - 1 ? "mb-4" : ""} flex-row justify-center gap-3`}>
                       {row.map((item) => (
-                        <PromoCard key={item.slug} item={item} wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false} onToggleWishlist={handleToggleWishlist} />
+                        <PromoCard
+                          key={item.slug}
+                          item={item}
+                          wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/product/[slug]",
+                              params: { slug: item.slug, name: item.name, price: item.price },
+                            })
+                          }
+                          onToggleWishlist={handleToggleWishlist}
+                        />
                       ))}
                     </View>
                   ))}

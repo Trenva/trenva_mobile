@@ -1,9 +1,11 @@
 import "../global.css";
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { Stack } from "expo-router";
 import { useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { enableScreens } from "react-native-screens";
 import { useFonts } from "expo-font";
 import {
   PlusJakartaSans_400Regular,
@@ -14,6 +16,12 @@ import {
 import { AppToast } from "../components/ui/app-toast";
 import { getAccessToken } from "../lib/auth/tokens";
 import { AppThemeProvider, useAppTheme } from "../lib/theme/theme-provider";
+
+// Work around Android 7 native-stack + RefreshControl back-navigation crash.
+// Keep native screens enabled for newer Android versions.
+if (Platform.OS === "android" && Number(Platform.Version) <= 25) {
+  enableScreens(false);
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

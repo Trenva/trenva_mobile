@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CategorySearchBar, CategoryTile } from "../../components/ui/category-ui";
 import { type ApiCategory, getCategories, resolveProductCardImageUrl } from "../../lib/api/shop";
@@ -20,6 +20,7 @@ function formatCategoryLabel(value: string) {
 }
 
 export default function CategoriesScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);

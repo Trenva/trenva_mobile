@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ type CartTotal = {
 };
 
 export default function CartScreen() {
+  const router = useRouter();
   const { colors, mode } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -137,7 +138,7 @@ export default function CartScreen() {
           style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
         >
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
@@ -212,6 +213,7 @@ export default function CartScreen() {
     </View>
   );
 }
+
 
 
 

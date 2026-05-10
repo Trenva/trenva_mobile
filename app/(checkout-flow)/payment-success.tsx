@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Pressable, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
@@ -17,6 +17,7 @@ function SuccessIcon() {
 }
 
 export default function PaymentSuccessScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const params = useLocalSearchParams<{
     orderId?: string;

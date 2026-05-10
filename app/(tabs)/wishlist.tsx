@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +21,7 @@ import {
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { CachedImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
+import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
 
 type WishlistCardItem = {
   id: number;
@@ -34,18 +34,13 @@ type WishlistCardItem = {
   imageUrl?: string;
 };
 
-function FavoriteCard({ item, onRemove }: { item: WishlistCardItem; onRemove: () => void }) {
+function FavoriteCard({ item, onRemove, onPress }: { item: WishlistCardItem; onRemove: () => void; onPress: () => void }) {
   const { colors } = useAppTheme();
   const discount = Number(item.discountPercentage ?? 0);
   const isOutOfStock = isExplicitlyOutOfStock(item.inStock);
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: item.slug, name: item.name, price: item.price },
-        })
-      }
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -84,10 +79,12 @@ function RecommendationCard({
   product,
   isWishlisted,
   onToggleWishlist,
+  onPress,
 }: {
   product: ApiProduct;
   isWishlisted: boolean;
   onToggleWishlist: () => void;
+  onPress: () => void;
 }) {
   const { colors } = useAppTheme();
   const imageUrl = resolveProductCardImageUrl(product.image);
@@ -98,12 +95,7 @@ function RecommendationCard({
 
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: String(product.id ?? product.pid), name: product.title, price },
-        })
-      }
+      onPress={onPress}
       className="mr-4 w-[145px] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -152,6 +144,7 @@ function mapWishlistItem(item: ApiWishlistItem): WishlistCardItem {
 }
 
 export default function WishlistScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -282,11 +275,11 @@ export default function WishlistScreen() {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => loadWishlist(true)} />}
       >
         <View
-          style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12) }}
+          style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
           className="px-4 pb-3"
         >
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
@@ -307,7 +300,7 @@ export default function WishlistScreen() {
 
         {isLoading ? (
           <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 py-6">
-            <LoadingListSkeleton rows={3} />
+            <ProductGridSkeleton rows={3} />
           </View>
         ) : wishlistItems.length === 0 ? (
           <View className="px-6 py-12">
@@ -320,7 +313,17 @@ export default function WishlistScreen() {
           <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-7">
             <View className="flex-row flex-wrap justify-between">
               {wishlistItems.map((item) => (
-                <FavoriteCard key={item.id} item={item} onRemove={() => void handleRemove(item.id)} />
+                <FavoriteCard
+                  key={item.id}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: { slug: item.slug, name: item.name, price: item.price },
+                    })
+                  }
+                  onRemove={() => void handleRemove(item.id)}
+                />
               ))}
             </View>
           </View>
@@ -344,6 +347,12 @@ export default function WishlistScreen() {
                 key={product.pid}
                 product={product}
                 isWishlisted={typeof product.id === "number" ? wishlistedProductIds.has(product.id) : false}
+                onPress={() =>
+                  router.push({
+                    pathname: "/product/[slug]",
+                    params: { slug: String(product.id ?? product.pid), name: product.title, price: formatMoney(product.price) },
+                  })
+                }
                 onToggleWishlist={() => void handleToggleRecommendationWishlist(product)}
               />
             ))}
@@ -353,3 +362,4 @@ export default function WishlistScreen() {
     </View>
   );
 }
+

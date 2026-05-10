@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -12,13 +12,14 @@ const OPTIONS: Array<{ key: ThemePreference; title: string; subtitle: string }> 
 ];
 
 export default function AppearanceScreen() {
+  const router = useRouter();
   const { colors, preference, setPreference } = useAppTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <View className="flex-1 px-4" style={{ backgroundColor: colors.background, paddingTop: Math.max(insets.top + 4, 12) }}>
       <View className="mb-6 flex-row items-center">
-        <Pressable className="h-8 w-8 items-center justify-center" onPress={() => goBackOr(router)}>
+        <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
           <BackIcon />
         </Pressable>
         <Text className="ml-2 text-[22px]" style={{ color: colors.text }}>
@@ -61,3 +62,4 @@ export default function AppearanceScreen() {
     </View>
   );
 }
+

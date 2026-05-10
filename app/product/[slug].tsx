@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -8,9 +8,9 @@ import { HeartFilledIcon, HeartOutlineIcon } from "../../components/ui/home-ui";
 import { SearchGrayIcon } from "../../components/ui/general-ui";
 import {
   addOrIncrementCartItem,
+  getRelatedProductsById,
   getProductBySlug,
   getProductImagesByPid,
-  getPublishedProducts,
   isExplicitlyOutOfStock,
   getProductReviews,
   getVendors,
@@ -34,6 +34,7 @@ type SimilarItem = {
   imageUrl?: string;
   rating: string;
 };
+const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function HomeIcon({ color }: { color: string }) {
   return (
@@ -111,21 +112,23 @@ function SimilarCard({
   item,
   wishlisted,
   onToggleWishlist,
+  onPress,
 }: {
   item: SimilarItem;
   wishlisted: boolean;
   onToggleWishlist: (item: SimilarItem) => void;
+  onPress: () => void;
 }) {
   const { colors } = useAppTheme();
   return (
     <Pressable
-      onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: item.pid } })}
+      onPress={onPress}
       className="mr-3 w-[160px] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
       <View className="relative h-[118px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
         {item.imageUrl ? <CachedImage uri={item.imageUrl} className="h-full w-full" /> : null}
-        <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)}>
+        <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)} hitSlop={ICON_HIT_SLOP}>
           {wishlisted ? <HeartFilledIcon size={20} /> : <HeartOutlineIcon color="#FFB13D" size={20} />}
         </Pressable>
       </View>
@@ -139,6 +142,7 @@ function SimilarCard({
 }
 
 export default function ProductDetailsScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { slug } = useLocalSearchParams<{ slug?: string }>();
   const { width } = useWindowDimensions();
@@ -169,84 +173,100 @@ export default function ProductDetailsScreen() {
       }
 
       try {
-        const [detail, allProducts] = await Promise.all([getProductBySlug(slug), getPublishedProducts()]);
+        setIsLoading(true);
+        setSimilarProducts([]);
+        setVendorInfo(null);
+        setReviews([]);
+
+        const detail = await getProductBySlug(slug);
         if (!isMounted) return;
         setProduct(detail);
 
         const mainImage = resolveMediaUrl(detail.image);
-        const inlineImages = (detail.p_images ?? [])
-          .map((row) => resolveMediaUrl(row.images))
-          .filter((url): url is string => Boolean(url));
-        let extraImages: string[] = [];
-        if (detail.pid) {
-          try {
-            extraImages = (await getProductImagesByPid(detail.pid))
-              .map((row) => resolveMediaUrl(row.images))
-              .filter((url): url is string => Boolean(url));
-          } catch {
-            extraImages = [];
-          }
-        }
-        const merged = [mainImage, ...inlineImages, ...extraImages].filter((url): url is string => Boolean(url));
-        const unique = Array.from(new Set(merged));
-        setGalleryImages(unique);
+        // Render instantly with the primary image, then enrich gallery in background.
+        const initialGallery = [mainImage].filter((url): url is string => Boolean(url));
+        setGalleryImages(initialGallery);
         setSelectedImageIndex(0);
+        setIsLoading(false);
+        setIsRefreshing(false);
 
-        let wishlistIds = new Set<number>();
-        try {
-          const wishlistItems = await getWishlistItems();
-          wishlistIds = new Set(
-            wishlistItems.map((item) => getWishlistProductId(item)).filter((value): value is number => typeof value === "number"),
-          );
-        } catch {
-          wishlistIds = new Set();
-        }
-        setWishlistedProductIds(wishlistIds);
-
-        const related = allProducts
-          .filter((item) => item.pid !== detail.pid)
-          .filter(
-            (item) =>
-              (detail.leveltwocategory && item.leveltwocategory === detail.leveltwocategory) ||
-              (detail.subcategory && item.subcategory === detail.subcategory) ||
-              (detail.category && item.category === detail.category),
-          );
-        const source = related.length > 0 ? related : allProducts.filter((item) => item.pid !== detail.pid);
-        const mappedSimilar = source
-          .slice(0, 8)
-          .map((item) => ({
-            pid: String(item.id ?? item.pid),
-            title: item.title,
-            price: formatMoney(item.price),
-            imageUrl: resolveMediaUrl(item.image),
-            rating: Number(item.average_rating ?? 4.5).toFixed(1),
-          }));
-        setSimilarProducts(mappedSimilar);
-
-        try {
-          if (detail.id) {
-            const productReviews = await getProductReviews(detail.id);
-            if (isMounted) setReviews(productReviews);
+        void (async () => {
+          // 1) Load full image gallery
+          const inlineImages = (detail.p_images ?? [])
+            .map((row) => resolveMediaUrl(row.images))
+            .filter((url): url is string => Boolean(url));
+          let extraImages: string[] = [];
+          if (detail.pid) {
+            try {
+              extraImages = (await getProductImagesByPid(detail.pid))
+                .map((row) => resolveMediaUrl(row.images))
+                .filter((url): url is string => Boolean(url));
+            } catch {
+              extraImages = [];
+            }
           }
-        } catch {
-          if (isMounted) setReviews([]);
-        }
+          if (!isMounted) return;
+          const merged = [mainImage, ...inlineImages, ...extraImages].filter((url): url is string => Boolean(url));
+          const unique = Array.from(new Set(merged));
+          if (unique.length > 0) setGalleryImages(unique);
 
-        try {
-          const vendors = await getVendors();
-          const matched = vendors.find((vendor) => vendor.name?.toLowerCase() === String(detail.vendor ?? "").toLowerCase()) ?? null;
-          if (isMounted) setVendorInfo(matched);
-        } catch {
-          if (isMounted) setVendorInfo(null);
-        }
+          // 2) Load non-critical sections in parallel
+          const [wishlistResult, relatedResult, reviewsResult, vendorsResult] = await Promise.allSettled([
+            getWishlistItems(),
+            detail.id ? getRelatedProductsById(detail.id, 12) : Promise.resolve([]),
+            detail.id ? getProductReviews(detail.id) : Promise.resolve([]),
+            getVendors(),
+          ]);
+          if (!isMounted) return;
+
+          if (wishlistResult.status === "fulfilled") {
+            const wishlistIds = new Set(
+              wishlistResult.value.map((item) => getWishlistProductId(item)).filter((value): value is number => typeof value === "number"),
+            );
+            setWishlistedProductIds(wishlistIds);
+          } else {
+            setWishlistedProductIds(new Set());
+          }
+
+          if (relatedResult.status === "fulfilled") {
+            const source = relatedResult.value.filter((item) => item.pid !== detail.pid);
+            const mappedSimilar = source
+              .slice(0, 8)
+              .map((item) => ({
+                pid: String(item.id ?? item.pid),
+                title: item.title,
+                price: formatMoney(item.price),
+                imageUrl: resolveMediaUrl(item.image),
+                rating: Number(item.average_rating ?? 4.5).toFixed(1),
+              }));
+            setSimilarProducts(mappedSimilar);
+          }
+
+          if (reviewsResult.status === "fulfilled") {
+            setReviews(reviewsResult.value);
+          } else {
+            setReviews([]);
+          }
+
+          if (vendorsResult.status === "fulfilled") {
+            const matched = vendorsResult.value.find(
+              (vendor) => vendor.name?.toLowerCase() === String(detail.vendor ?? "").toLowerCase(),
+            ) ?? null;
+            setVendorInfo(matched);
+          } else {
+            setVendorInfo(null);
+          }
+        })();
       } catch {
         if (!isMounted) return;
         setProduct(null);
         setSimilarProducts([]);
         setVendorInfo(null);
         setReviews([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
       } finally {
-        if (isMounted) setIsLoading(false);
+        // no-op: staged loading controls these flags above
       }
     }
     void loadProduct();
@@ -360,20 +380,19 @@ export default function ProductDetailsScreen() {
             onRefresh={() => {
               setIsRefreshing(true);
               setReloadKey((prev) => prev + 1);
-              setTimeout(() => setIsRefreshing(false), 800);
             }}
           />
         }
       >
         <View className="flex-row items-center justify-between border-b px-4 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), borderColor: colors.border, backgroundColor: colors.elevated }}>
           <View className="flex-row items-center gap-2">
-            <Pressable onPress={() => goBackOr(router)}><ThemedBackIcon color={colors.text} /></Pressable>
+            <Pressable onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}><ThemedBackIcon color={colors.text} /></Pressable>
           </View>
           <View className="flex-row items-center gap-4">
-            <Pressable onPress={() => router.replace("/(tabs)")}><HomeIcon color={colors.text} /></Pressable>
-            <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
-            <Pressable onPress={() => router.push("/(tabs)/cart")}><CartDarkIcon color={colors.text} /></Pressable>
-            <Pressable onPress={() => router.push("/(tabs)/wishlist")}><HeartOutlineIcon color={colors.text} size={22} /></Pressable>
+            <Pressable onPress={() => router.replace("/(tabs)")} hitSlop={ICON_HIT_SLOP}><HomeIcon color={colors.text} /></Pressable>
+            <Pressable onPress={() => router.push("/search")} hitSlop={ICON_HIT_SLOP}><SearchGrayIcon /></Pressable>
+            <Pressable onPress={() => router.push("/(tabs)/cart")} hitSlop={ICON_HIT_SLOP}><CartDarkIcon color={colors.text} /></Pressable>
+            <Pressable onPress={() => router.push("/(tabs)/wishlist")} hitSlop={ICON_HIT_SLOP}><HeartOutlineIcon color={colors.text} size={22} /></Pressable>
           </View>
         </View>
 
@@ -417,6 +436,7 @@ export default function ProductDetailsScreen() {
                     setSelectedImageIndex(index);
                     mainImageScrollRef.current?.scrollTo({ x: index * mainImageWidth, y: 0, animated: true });
                   }}
+                  hitSlop={ICON_HIT_SLOP}
                   className={`mr-2 overflow-hidden rounded-[6px] border ${selectedImageIndex === index ? "border-primary" : ""}`}
                   style={selectedImageIndex === index ? styles.thumbContainer : [styles.thumbContainer, { borderColor: colors.border }]}
                 >
@@ -431,8 +451,8 @@ export default function ProductDetailsScreen() {
               <View className="mt-4 flex-row items-center justify-between">
                 <Text className="text-[14px] text-primary">{inStock ? "In Stock" : "Out of Stock"}</Text>
                 <View className="flex-row items-center gap-4">
-                  <Pressable onPress={() => Share.share({ message: `${productName} - ${productPrice}` })}><ShareIcon color={colors.primary} /></Pressable>
-                  <Pressable onPress={() => product?.id && handleToggleWishlistById(product.id, productName)}>
+                  <Pressable onPress={() => Share.share({ message: `${productName} - ${productPrice}` })} hitSlop={ICON_HIT_SLOP}><ShareIcon color={colors.primary} /></Pressable>
+                  <Pressable onPress={() => product?.id && handleToggleWishlistById(product.id, productName)} hitSlop={ICON_HIT_SLOP}>
                     {isCurrentWishlisted ? <HeartFilledIcon size={24} /> : <HeartOutlineIcon color="#FFB13D" size={24} />}
                   </Pressable>
                 </View>
@@ -536,6 +556,7 @@ export default function ProductDetailsScreen() {
                     item={item}
                     wishlisted={wishlistedProductIds.has(Number(item.pid))}
                     onToggleWishlist={(value) => void handleToggleWishlistById(Number(value.pid), value.title)}
+                    onPress={() => router.push({ pathname: "/product/[slug]", params: { slug: item.pid } })}
                   />
                 ))}
               </ScrollView>

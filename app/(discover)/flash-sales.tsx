@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { applyProductFilters } from "../../lib/search/product-filters";
@@ -10,9 +11,9 @@ import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
 import { CachedImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
-import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
+import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
 
-function FlashSaleCard({ item }: { item: ApiFlashSaleProduct }) {
+function FlashSaleCard({ item, onPress }: { item: ApiFlashSaleProduct; onPress: () => void }) {
   const { colors } = useAppTheme();
   const details = item.product_details;
   const priceValue = item.flash_sale_price ?? item.effective_price ?? details?.price ?? 0;
@@ -22,12 +23,7 @@ function FlashSaleCard({ item }: { item: ApiFlashSaleProduct }) {
 
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: "/product/[slug]",
-          params: { slug: String(details.id ?? details.pid ?? item.product), name: details.title ?? "Product", price: formatMoney(priceValue) },
-        })
-      }
+      onPress={onPress}
       className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
       style={{ backgroundColor: colors.card }}
     >
@@ -53,6 +49,7 @@ function FlashSaleCard({ item }: { item: ApiFlashSaleProduct }) {
 }
 
 export default function FlashSalesScreen() {
+  const router = useRouter();
   const { colors } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -151,7 +148,7 @@ export default function FlashSalesScreen() {
           style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
         >
           <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" onPress={() => router.back()}>
+            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
             <View className="flex-row items-center gap-4">
@@ -174,7 +171,7 @@ export default function FlashSalesScreen() {
         <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-6">
           {isLoading ? (
             <View className="py-4">
-              <LoadingListSkeleton rows={3} />
+              <ProductGridSkeleton rows={3} />
             </View>
           ) : filteredItems.length === 0 ? (
             <View className="py-12">
@@ -186,7 +183,20 @@ export default function FlashSalesScreen() {
           ) : (
             <View className="flex-row flex-wrap justify-between">
               {filteredItems.map((item) => (
-                <FlashSaleCard key={item.id} item={item} />
+                <FlashSaleCard
+                  key={item.id}
+                  item={item}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/product/[slug]",
+                      params: {
+                        slug: String(item.product_details?.id ?? item.product_details?.pid ?? item.product),
+                        name: item.product_details?.title ?? "Product",
+                        price: formatMoney(item.flash_sale_price ?? item.effective_price ?? item.product_details?.price ?? 0),
+                      },
+                    })
+                  }
+                />
               ))}
             </View>
           )}
@@ -200,3 +210,4 @@ export default function FlashSalesScreen() {
     </View>
   );
 }
+

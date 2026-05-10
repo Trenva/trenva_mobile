@@ -105,12 +105,18 @@ export async function fetchProfile() {
 }
 
 export async function updateProfile(payload: Partial<UserProfile>) {
+  // Enforce immutable identity fields from client side as a safety layer.
+  // Backend must also enforce this.
+  const safePayload: Partial<UserProfile> = { ...payload };
+  delete safePayload.email;
+  delete safePayload.gender;
+
   try {
-    const response = await apiClient.patch<UserProfile>("/api/user/profile/", payload);
+    const response = await apiClient.patch<UserProfile>("/api/user/profile/", safePayload);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 405) {
-      const response = await apiClient.put<UserProfile>("/api/user/profile/", payload);
+      const response = await apiClient.put<UserProfile>("/api/user/profile/", safePayload);
       return response.data;
     }
     throw error;
