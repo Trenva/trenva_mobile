@@ -92,21 +92,31 @@ export function CategoryTile({
   label,
   imageUrl,
   onPress,
+  width,
+  iconSize = 60,
+  fontSize = 11,
 }: {
   label: string;
   imageUrl?: string;
   onPress?: () => void;
+  width?: number;
+  iconSize?: number;
+  fontSize?: number;
 }) {
   return (
-    <Pressable onPress={onPress} className="mb-7 w-[31%] items-center">
+    <Pressable
+      onPress={onPress}
+      className="mb-7 items-center"
+      style={width ? { width } : { width: "31%" }}
+    >
       {imageUrl ? (
-        <View className="h-[60px] w-[60px] overflow-hidden rounded-[10px]">
+        <View className="overflow-hidden rounded-[10px]" style={{ width: iconSize, height: iconSize }}>
           <CachedImage uri={imageUrl} className="h-full w-full" />
         </View>
       ) : (
-        <CategoryArtwork />
+        <CategoryArtwork size={iconSize} />
       )}
-      <Text className="mt-2 text-center text-[11px] font-medium leading-[16px] text-primary">
+      <Text className="mt-2 text-center font-medium leading-[16px] text-primary" style={{ fontSize }}>
         {label}
       </Text>
     </Pressable>
@@ -126,7 +136,7 @@ export function SubcategorySection({
 }) {
   const { colors } = useAppTheme();
   return (
-    <View className="mb-9">
+    <View className="mb-14">
       <View className="mb-5 flex-row items-center justify-between">
         <Text className="text-[18px] font-medium" style={{ color: colors.text }}>{title}</Text>
         <Pressable onPress={onPressViewAll}>
@@ -154,10 +164,14 @@ export function SubcategorySection({
   );
 }
 
-export function AllProductsCard({ title }: { title: string }) {
+export function AllProductsCard({ title, onPress }: { title: string; onPress?: () => void }) {
   const { colors } = useAppTheme();
   return (
-    <Pressable className="mb-8 mt-6 flex-row items-center justify-between rounded-xl border px-4 py-3.5" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+    <Pressable
+      onPress={onPress}
+      className="mb-8 mt-6 flex-row items-center justify-between rounded-xl border px-4 py-3.5"
+      style={{ borderColor: colors.border, backgroundColor: colors.card }}
+    >
       <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>{title}</Text>
       <ChevronGrayIcon />
     </Pressable>

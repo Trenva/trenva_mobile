@@ -1,4 +1,5 @@
 import { Image as ExpoImage, type ImageContentFit } from "expo-image";
+import { View } from "react-native";
 import type { StyleProp, ViewStyle, ImageStyle } from "react-native";
 
 type CachedImageProps = {
@@ -19,6 +20,25 @@ export function CachedImage({ uri, style, contentFit = "cover", className }: Cac
       cachePolicy="memory-disk"
       transition={120}
     />
+  );
+}
+
+type ProductCardImageProps = {
+  uri: string;
+  className?: string;
+  style?: StyleProp<ViewStyle>;
+};
+
+// Hybrid render: background cover adds visual fullness while foreground contain keeps the full product visible.
+export function ProductCardImage({ uri, className, style }: ProductCardImageProps) {
+  return (
+    <View className={className} style={[{ width: "100%", height: "100%", overflow: "hidden" }, style]}>
+      <CachedImage
+        uri={uri}
+        contentFit="contain"
+        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+    </View>
   );
 }
 

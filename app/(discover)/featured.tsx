@@ -9,11 +9,12 @@ import { applyProductFilters } from "../../lib/search/product-filters";
 import { formatMoney, getFeaturedProductsPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
-function FeaturedCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
+function FeaturedCard({ item, onPress, width, imageHeight }: { item: ApiProduct; onPress: () => void; width: number; imageHeight: number }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -22,16 +23,16 @@ function FeaturedCard({ item, onPress }: { item: ApiProduct; onPress: () => void
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {item.image ? <CachedImage uri={resolveProductCardImageUrl(item.image)!} className="h-full w-full" /> : null}
+        {item.image ? <ProductCardImage uri={resolveProductCardImageUrl(item.image)!} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -62,6 +63,7 @@ export default function FeaturedScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -147,7 +149,9 @@ export default function FeaturedScreen() {
               <Pressable onPress={() => router.push("/search")}>
                 <SearchGrayIcon />
               </Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
         </View>
@@ -173,11 +177,13 @@ export default function FeaturedScreen() {
               </Pressable>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {filteredItems.map((item) => (
                 <FeaturedCard
                   key={String(item.id ?? item.pid)}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",

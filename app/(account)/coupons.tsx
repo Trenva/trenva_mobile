@@ -17,7 +17,6 @@ type Coupon = {
   title: string;
   subtitle: string;
   dateLine?: string;
-  usageLine?: string;
   code: string;
   statusTag?: "used" | "expired" | "used_expired";
 };
@@ -137,7 +136,6 @@ function CouponCard({
         </View>
 
         {item.dateLine ? <Text className="mt-5 text-[14px] text-[#1C1C1C]">{item.dateLine}</Text> : null}
-        {item.usageLine ? <Text className="mt-1 text-[13px] text-[#1C1C1C]">{item.usageLine}</Text> : null}
         {!expired ? <Text className="mt-2 text-[14px] text-[#1C1C1C]">Valid on all products</Text> : null}
         <Text className="mt-2 self-end text-[18px] font-medium text-[#1C1C1C]">Code: {item.code}</Text>
       </View>
@@ -167,14 +165,11 @@ export default function CouponsScreen() {
     const display = item.discount_type === "percentage" ? `${discountValue}%` : `₦${discountValue}`;
     const minimumOrder = Number(item.minimum_order ?? 0);
     const subtitle = minimumOrder > 0 ? `For purchases above ₦${minimumOrder.toLocaleString()}` : "No minimum order";
-    const remainingUses =
-      typeof item.usage_limit === "number" ? Math.max(0, item.usage_limit - Number(item.usage_count ?? 0)) : null;
     return {
       id: item.id,
       title: `Enjoy ${display} off`,
       subtitle,
       dateLine: item.expiry_date ? `Offer valid until ${new Date(item.expiry_date).toLocaleDateString()}` : undefined,
-      usageLine: remainingUses !== null ? `${remainingUses} use${remainingUses === 1 ? "" : "s"} left` : "Unlimited uses",
       code: item.coupon_code,
     };
   }

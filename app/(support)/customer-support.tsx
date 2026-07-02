@@ -11,6 +11,7 @@ import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { createContactForm } from "../../lib/api/shop";
 import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 const SUPPORT_EMAIL = "contact.trenva@gmail.com";
@@ -131,8 +132,7 @@ export default function CustomerSupportScreen() {
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
-        notifyInfo("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
+        promptLoginRequired(router, "Please sign in to contact support.");
         return;
       }
       notifyError("Send failed", getApiErrorMessage(error, "Unable to send message right now."));
@@ -210,7 +210,6 @@ export default function CustomerSupportScreen() {
     </KeyboardAvoidingView>
   );
 }
-
 
 
 

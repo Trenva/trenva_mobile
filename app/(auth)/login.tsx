@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as Linking from "expo-linking";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -14,7 +15,9 @@ import {
   PrimaryButton,
 } from "../../components/ui/auth-ui";
 import { getApiErrorMessage } from "../../lib/api/errors";
-import { login } from "../../lib/api/auth";
+import { buildGoogleSocialLoginUrl, login } from "../../lib/api/auth";
+import { armSocialCallback } from "../../lib/auth/tokens";
+import { registerDeviceForPushNotifications } from "../../lib/notifications/push";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function LoginScreen() {
@@ -25,6 +28,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   async function handleLogin() {
     if (isSubmitting) {
@@ -42,12 +46,29 @@ export default function LoginScreen() {
         usernameOrEmail: email.trim(),
         password,
       });
+      try {
+        await registerDeviceForPushNotifications();
+      } catch {}
       notifySuccess("Login successful", "Welcome back.");
       router.replace("/(tabs)");
     } catch (error) {
       notifyError("Login failed", getApiErrorMessage(error, "Unable to sign in right now."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    if (isGoogleSubmitting) return;
+    try {
+      setIsGoogleSubmitting(true);
+      await armSocialCallback();
+      const loginUrl = buildGoogleSocialLoginUrl();
+      await Linking.openURL(loginUrl);
+    } catch {
+      notifyError("Google sign-in failed", "Unable to open Google sign-in right now.");
+    } finally {
+      setIsGoogleSubmitting(false);
     }
   }
 
@@ -72,13 +93,13 @@ export default function LoginScreen() {
         />
 
         <AuthCard>
-          <GoogleButton title="Continue with Google" />
+          <GoogleButton title={isGoogleSubmitting ? "Opening Google..." : "Continue with Google"} onPress={() => void handleGoogleLogin()} />
           <Divider text="Or login with" />
 
           <AuthField
             value={email}
             onChangeText={setEmail}
-            placeholder="Loisbceket@gmail.com"
+            placeholder="akbeth@gmail.com"
             keyboardType="email-address"
             autoCapitalize="none"
           />
@@ -103,7 +124,7 @@ export default function LoginScreen() {
               label="Remember me"
             />
 
-            <Pressable onPress={() => router.push("/verification-code")}>
+            <Pressable onPress={() => router.push("/forgot-password")}>
               <Text className="text-[15px] font-semibold leading-5 text-primary">
                 Forgot Password ?
               </Text>
@@ -111,6 +132,26 @@ export default function LoginScreen() {
           </View>
 
           <PrimaryButton title={isSubmitting ? "Logging in..." : "Log In"} onPress={handleLogin} />
+
+          <View className="mt-4 px-2">
+            <Text className="text-center text-[12px] leading-5 text-gray-500">
+              By continuing, you agree to our{" "}
+              <Text
+                className="font-semibold text-primary"
+                onPress={() => router.push({ pathname: "/help-content", params: { type: "terms" } })}
+              >
+                Terms of Use
+              </Text>
+              {" "}and{" "}
+              <Text
+                className="font-semibold text-primary"
+                onPress={() => router.push({ pathname: "/help-content", params: { type: "privacy" } })}
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </View>
 
           <View className="mt-[22px] flex-row items-center justify-center gap-1.5">
             <Text className="text-[15px] leading-5 text-gray-500">

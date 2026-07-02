@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
-import { formatMoney, getPublishedProductsFiltered, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsFilteredPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { applyProductFilters } from "../../lib/search/product-filters";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
+
 const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
-function ResultCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
+function ResultCard({ item, onPress, width, imageHeight }: { item: ApiProduct; onPress: () => void; width: number; imageHeight: number }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -25,16 +27,16 @@ function ResultCard({ item, onPress }: { item: ApiProduct; onPress: () => void }
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -65,6 +67,7 @@ export default function SearchResultsScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
   const { query, category, subcategory, leveltwo } = useLocalSearchParams<{
     query?: string;
     category?: string;
@@ -73,6 +76,8 @@ export default function SearchResultsScreen() {
   }>();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const {
     query: sharedQuery,
@@ -117,7 +122,7 @@ export default function SearchResultsScreen() {
   const loadInitial = useCallback(async () => {
     try {
       setIsLoading(true);
-      const rows = await getPublishedProductsFiltered({
+      const page = await getPublishedProductsFilteredPage({
         query: sharedQuery || undefined,
         categoryTitle: sharedCategory || undefined,
         subcategoryTitle: sharedSubcategory || undefined,
@@ -127,10 +132,13 @@ export default function SearchResultsScreen() {
         minRating: minRatingFromReview,
         color: color || undefined,
         sort,
+        page: 1,
       });
-      setProducts(rows);
+      setProducts(page.results);
+      setNextUrl(page.next);
     } catch {
       setProducts([]);
+      setNextUrl(null);
       notifyError("Search failed", "Unable to load products right now.");
     } finally {
       setIsLoading(false);
@@ -159,12 +167,36 @@ export default function SearchResultsScreen() {
     [location, products, resolution, review],
   );
 
+  async function loadMore() {
+    if (!nextUrl || isLoadingMore || isLoading) return;
+    try {
+      setIsLoadingMore(true);
+      const page = await getPublishedProductsFilteredPage({ nextUrl });
+      setProducts((prev) => [...prev, ...page.results]);
+      setNextUrl(page.next);
+    } catch {
+      notifyError("Load failed", "Unable to load more products.");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  function handleScroll(event: any) {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+    if (remaining < 180) {
+      void loadMore();
+    }
+  }
+
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[0, 1]}
+        stickyHeaderIndices={[0]}
         contentContainerStyle={{ paddingBottom: 20 }}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -187,28 +219,19 @@ export default function SearchResultsScreen() {
               <Pressable onPress={() => router.push("/search")} hitSlop={ICON_HIT_SLOP}>
                 <SearchGrayIcon />
               </Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
         </View>
 
         <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", backgroundColor: colors.background }} className="px-4 pb-4 pt-2">
-          <Text className="text-[24px] font-semibold" style={{ color: colors.text }}>Search Results</Text>
-          <Text className="mt-2 text-[14px]" style={{ color: colors.textMuted }}>
-            Showing {filteredResults.length} results for <Text className="text-primary">"{keyword}"</Text>
-          </Text>
-
-          <View className="mt-3 rounded-xl border p-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-[13px] font-semibold" style={{ color: colors.text }}>Filters</Text>
-              <Pressable onPress={() => router.push("/filters")}>
-                <Text className="text-[12px] font-semibold text-primary">Open Filter</Text>
-              </Pressable>
-            </View>
-            <Text className="mt-2 text-[12px]" style={{ color: colors.textMuted }}>Sort: {sort.replaceAll("_", " ")}</Text>
-            <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>
-              Price: {typeof minPrice === "number" || typeof maxPrice === "number" ? `${typeof minPrice === "number" ? minPrice : 0} - ${typeof maxPrice === "number" ? maxPrice : "∞"}` : "Any"}
-            </Text>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-[24px] font-semibold" style={{ color: colors.text }}>Search Results</Text>
+            <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
+              <Text className="text-[12px] font-semibold text-primary">Filter</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -225,11 +248,13 @@ export default function SearchResultsScreen() {
               </Pressable>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {filteredResults.map((item) => (
                 <ResultCard
                   key={String(item.id ?? item.pid)}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",
@@ -240,10 +265,13 @@ export default function SearchResultsScreen() {
               ))}
             </View>
           )}
+          {isLoadingMore ? (
+            <View className="items-center py-4">
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </View>
   );
 }
-
-

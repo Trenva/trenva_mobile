@@ -141,7 +141,9 @@ export default function PaymentsScreen() {
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Payments</Text>
-        <BellDarkIcon />
+        <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+          <BellDarkIcon />
+        </Pressable>
       </View>
 
       <View className="px-5">

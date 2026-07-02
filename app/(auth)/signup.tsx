@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView } from "react-native";
+import * as Linking from "expo-linking";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
+import { armSocialCallback } from "../../lib/auth/tokens";
 import {
   AuthCard,
   AuthField,
@@ -16,7 +18,7 @@ import {
   PrimaryButton,
 } from "../../components/ui/auth-ui";
 import { getApiErrorMessage } from "../../lib/api/errors";
-import { checkEmailExists, register } from "../../lib/api/auth";
+import { buildGoogleSocialLoginUrl, checkEmailExists, register } from "../../lib/api/auth";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 
 export default function SignupScreen() {
@@ -32,6 +34,7 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   async function handleSignup() {
     if (isSubmitting) {
@@ -73,7 +76,7 @@ export default function SignupScreen() {
         return;
       }
 
-      await register({
+      const result = await register({
         username,
         email: normalizedEmail,
         password,
@@ -84,12 +87,29 @@ export default function SignupScreen() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       });
-      notifySuccess("Signup successful", "Account created successfully. Please log in.");
-      router.replace("/(auth)/login");
+      Alert.alert(
+        "Verify your email",
+        result?.message ?? "Account created. Please verify your email before proceeding to login.",
+        [{ text: "OK", onPress: () => router.replace("/(auth)/login") }],
+      );
     } catch (error) {
       notifyError("Signup failed", getApiErrorMessage(error, "Unable to create your account right now."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSignup() {
+    if (isGoogleSubmitting) return;
+    try {
+      setIsGoogleSubmitting(true);
+      await armSocialCallback();
+      const loginUrl = buildGoogleSocialLoginUrl();
+      await Linking.openURL(loginUrl);
+    } catch {
+      notifyError("Google sign-up failed", "Unable to open Google sign-up right now.");
+    } finally {
+      setIsGoogleSubmitting(false);
     }
   }
 
@@ -129,7 +149,7 @@ export default function SignupScreen() {
             label="Email"
             value={email}
             onChangeText={setEmail}
-            placeholder="AkBeth@gmail.com"
+            placeholder="aketh@gmail.com"
             keyboardType="email-address"
             autoCapitalize="none"
           />
@@ -172,8 +192,27 @@ export default function SignupScreen() {
           />
 
           <PrimaryButton title={isSubmitting ? "Signing up..." : "Sign Up"} onPress={handleSignup} />
+          <View className="mt-4 px-2">
+            <Text className="text-center text-[12px] leading-5 text-gray-500">
+              By continuing, you agree to our{" "}
+              <Text
+                className="font-semibold text-primary"
+                onPress={() => router.push({ pathname: "/help-content", params: { type: "terms" } })}
+              >
+                Terms of Use
+              </Text>
+              {" "}and{" "}
+              <Text
+                className="font-semibold text-primary"
+                onPress={() => router.push({ pathname: "/help-content", params: { type: "privacy" } })}
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </View>
           <Divider text="Or" />
-          <GoogleButton title="Sign up with Google" />
+          <GoogleButton title={isGoogleSubmitting ? "Opening Google..." : "Sign up with Google"} onPress={() => void handleGoogleSignup()} />
         </AuthCard>
       </ScrollView>
     </KeyboardAvoidingView>

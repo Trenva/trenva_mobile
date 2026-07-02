@@ -24,8 +24,10 @@ import {
   formatMoney,
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { CachedImage, ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { isUnauthorizedError } from "../../lib/api/errors";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 
 type SimilarItem = {
   pid: string;
@@ -127,7 +129,7 @@ function SimilarCard({
       style={{ backgroundColor: colors.card }}
     >
       <View className="relative h-[118px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
-        {item.imageUrl ? <CachedImage uri={item.imageUrl} className="h-full w-full" /> : null}
+        {item.imageUrl ? <ProductCardImage uri={item.imageUrl} className="h-full w-full" /> : null}
         <Pressable className="absolute right-3 top-3" onPress={() => onToggleWishlist(item)} hitSlop={ICON_HIT_SLOP}>
           {wishlisted ? <HeartFilledIcon size={20} /> : <HeartOutlineIcon color="#FFB13D" size={20} />}
         </Pressable>
@@ -285,24 +287,46 @@ export default function ProductDetailsScreen() {
   const currentImage = galleryImages[selectedImageIndex] ?? fallbackMainImage;
 
   const sizeOptions = useMemo(() => {
+    function toSizeLabel(value: unknown): string {
+      if (typeof value === "string" || typeof value === "number") {
+        return String(value).trim();
+      }
+      if (value && typeof value === "object") {
+        const candidate = value as Record<string, unknown>;
+        const prioritizedKeys = ["size", "name", "value", "label", "title"];
+        for (const key of prioritizedKeys) {
+          const field = candidate[key];
+          if (typeof field === "string" || typeof field === "number") {
+            const label = String(field).trim();
+            if (label) return label;
+          }
+        }
+      }
+      return "";
+    }
+
     const rawSize = product?.size;
 
     if (Array.isArray(rawSize)) {
-      return rawSize.map((value) => String(value).trim()).filter(Boolean);
+      return Array.from(new Set(rawSize.map((value) => toSizeLabel(value)).filter(Boolean)));
     }
 
     if (typeof rawSize === "string") {
-      return rawSize
+      return Array.from(
+        new Set(
+          rawSize
         .split(",")
         .map((value: string) => value.trim())
-        .filter(Boolean);
+            .filter(Boolean),
+        ),
+      );
     }
 
     if (rawSize === null || rawSize === undefined) {
       return [];
     }
 
-    return [String(rawSize).trim()].filter(Boolean);
+    return [toSizeLabel(rawSize)].filter(Boolean);
   }, [product?.size]);
 
   const ratingBreakdown = useMemo(() => {
@@ -328,7 +352,11 @@ export default function ProductDetailsScreen() {
       setIsAddingToCart(true);
       await addOrIncrementCartItem(product.id);
       notifySuccess("Added to cart", `${productName} has been added to your cart.`);
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to add items to your cart.");
+        return;
+      }
       notifyError("Add to cart failed", "We couldn't add this item right now. Please try again.");
     } finally {
       setIsAddingToCart(false);
@@ -346,7 +374,11 @@ export default function ProductDetailsScreen() {
     try {
       const result = await toggleWishlistByProductId(productId);
       notifySuccess(result.action === "added" ? "Added to wishlist" : "Removed from wishlist", title);
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to manage your wishlist.");
+        return;
+      }
       setWishlistedProductIds((prev) => {
         const next = new Set(prev);
         if (wasWishlisted) next.add(productId);
@@ -397,7 +429,10 @@ export default function ProductDetailsScreen() {
         </View>
 
         <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-3">
-          <View style={[styles.mainImageContainer, { width: mainImageWidth, backgroundColor: colors.elevated }]} className="overflow-hidden rounded-[8px]">
+          <View
+            style={[styles.mainImageContainer, { width: mainImageWidth, backgroundColor: colors.elevated, alignSelf: "center" }]}
+            className="overflow-hidden rounded-[8px]"
+          >
             {isLoading ? (
               <View className="h-full w-full items-center justify-center">
                 <ActivityIndicator color={colors.primary} />
@@ -636,6 +671,3 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 });
-
-
-

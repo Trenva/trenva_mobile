@@ -32,6 +32,8 @@ export function CartItem({
 }: CartItemProps) {
   const { colors } = useAppTheme();
   const naira = "\u20A6";
+  const normalizedPrice = Number(String(price ?? "0").replace(/[^\d.-]/g, ""));
+  const displayPrice = Number.isNaN(normalizedPrice) ? "0" : normalizedPrice.toLocaleString();
 
   const isOutOfStock = stock === "Out of Stock";
   const isLowStock = stock.includes("left");
@@ -53,7 +55,7 @@ export function CartItem({
           </View>
 
           <Text className="mt-1 text-base font-bold" style={{ color: colors.text }}>
-            {`${naira}${price}`}
+            {`${naira}${displayPrice}`}
           </Text>
 
           <View className="mt-3 flex-row items-center justify-between">
@@ -96,12 +98,12 @@ export function PriceDetails({ items, subtotal, discount, delivery, total }: Pri
 
       <View className="mb-3 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Discount</Text>
-        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`${naira}${discount}`}</Text>
+        <Text className="text-xs font-semibold  bg-primary rounded-xl px-1 py-0.5 text-white">Discount can be added at checkout</Text>
       </View>
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Delivery Charges</Text>
-        <Text className="text-sm font-semibold" style={{ color: colors.text }}>{`${naira}${delivery}`}</Text>
+        <Text className="text-xs font-semibold bg-primary rounded-xl px-1 py-0.5 text-white">Delivery fee will be added at checkout</Text>
       </View>
 
       <View className="mb-4 h-px" style={{ backgroundColor: colors.border }} />

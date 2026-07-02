@@ -127,7 +127,9 @@ export default function FiltersScreen() {
             </Pressable>
             <View className="flex-row items-center gap-4">
               <SearchGrayIcon />
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
 

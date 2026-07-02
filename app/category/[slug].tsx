@@ -210,7 +210,15 @@ export default function CategoryDetailScreen() {
         </View>
 
         <View className="px-5 pt-2">
-          <AllProductsCard title={categoryTitle} />
+          <AllProductsCard
+            title={categoryTitle}
+            onPress={() =>
+              router.push({
+                pathname: "/category-products",
+                params: { category: categoryTitle, title: categoryTitle, cid: slug ?? "" },
+              })
+            }
+          />
 
           {isLoading ? (
             <View className="items-center py-12">

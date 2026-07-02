@@ -23,8 +23,9 @@ import {
 } from "../../lib/api/shop";
 import { fetchProfile } from "../../lib/api/auth";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { CachedImage, ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
 function normalize(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
@@ -50,11 +51,15 @@ function VendorProductCard({
   wishlisted,
   onToggleWishlist,
   onPress,
+  width,
+  imageHeight,
 }: {
   item: ApiProduct;
   wishlisted: boolean;
   onToggleWishlist: (item: ApiProduct) => void;
   onPress: () => void;
+  width: number;
+  imageHeight: number;
 }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
@@ -66,12 +71,12 @@ function VendorProductCard({
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[8px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[8px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View style={styles.productImageWrap} className="relative overflow-hidden" >
+      <View style={[styles.productImageWrap, { height: imageHeight }]} className="relative overflow-hidden" >
         <View className="absolute inset-0" style={{ backgroundColor: colors.elevated }} />
-        {imageUrl ? <CachedImage uri={imageUrl} style={styles.productImage} /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} style={styles.productImage} /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -101,6 +106,7 @@ export default function VendorProfileScreen() {
   const vendorHint = String(name ?? slug ?? "").trim();
   const { width } = useWindowDimensions();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
 
   const [isLoading, setIsLoading] = useState(true);
   const [isProductsLoading, setIsProductsLoading] = useState(true);
@@ -183,7 +189,12 @@ export default function VendorProfileScreen() {
     };
   }, [slug, vendorHint, reloadKey]);
 
-  const vendorName = vendor?.name ?? (vendorHint || "Vendor");
+  const vendorName =
+    vendor?.business_name?.trim() ||
+    vendor?.store_name?.trim() ||
+    vendor?.name?.trim() ||
+    vendorHint ||
+    "Vendor";
   const vendorImageUrl = resolveMediaUrl(vendor?.image);
   const soldCount = vendor?.total_orders ?? 0;
   const memberSince = vendor?.date ? new Date(vendor.date).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : null;
@@ -280,7 +291,9 @@ export default function VendorProfileScreen() {
             <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}><BackIcon /></Pressable>
             <View className="flex-row items-center gap-4">
               <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
 
@@ -392,11 +405,13 @@ export default function VendorProfileScreen() {
               ) : filteredVendorProducts.length === 0 ? (
                 <Text className="py-12 text-center text-[14px]" style={{ color: colors.textMuted }}>No products found for this vendor yet.</Text>
               ) : (
-                <View className="mt-4 flex-row flex-wrap justify-between">
+                <View className="mt-4 flex-row flex-wrap justify-center gap-3">
                   {filteredVendorProducts.map((item) => (
                     <VendorProductCard
                       key={String(item.id ?? item.pid)}
                       item={item}
+                      width={grid.cardWidth}
+                      imageHeight={grid.imageHeight}
                       wishlisted={typeof item.id === "number" ? wishlistedProductIds.has(item.id) : false}
                       onToggleWishlist={(value) => void handleToggleWishlist(value)}
                       onPress={() =>

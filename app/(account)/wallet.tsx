@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
@@ -8,8 +9,9 @@ import { BackIcon } from "../../components/ui/general-ui";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { formatMoney, getTransactions, getWallets, type ApiTransaction } from "../../lib/api/shop";
-import { notifyError, notifyInfo } from "../../lib/ui/notify";
+import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function DownIcon() {
@@ -43,8 +45,30 @@ export default function WalletScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [accountNumber, setAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
+
+  const displayAccountName = useMemo(() => {
+    const raw = (accountName || "").trim();
+    if (!raw) return "TRENVA/USER";
+    const normalized = raw.toUpperCase();
+    const withoutPrefix = normalized.startsWith("TRENVA/") ? normalized.slice("TRENVA/".length) : normalized;
+    const firstToken = withoutPrefix.trim().split(/\s+/)[0] || "USER";
+    return `TRENVA/${firstToken}`;
+  }, [accountName]);
+
+  const sortedTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      const aTime = new Date(a.created_at ?? a.formatted_date ?? 0).getTime();
+      const bTime = new Date(b.created_at ?? b.formatted_date ?? 0).getTime();
+      return bTime - aTime;
+    });
+  }, [transactions]);
+
+  const previewTransactions = useMemo(() => sortedTransactions.slice(0, 5), [sortedTransactions]);
 
   const loadWallet = useCallback(async (showLoader = true) => {
     try {
@@ -54,12 +78,14 @@ export default function WalletScreen() {
       const [wallets, txns] = await Promise.all([getWallets(), getTransactions({ status: "success" })]);
       const firstWallet = wallets[0];
       setWalletBalance(Number(firstWallet?.balance ?? 0) || 0);
-      setTransactions(txns.slice(0, 10));
+      setAccountNumber(String(firstWallet?.account_number ?? "").trim());
+      setBankName(String(firstWallet?.bank_name ?? "").trim());
+      setAccountName(String(firstWallet?.account_name ?? firstWallet?.user_name ?? "").trim());
+      setTransactions(txns);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
-        notifyInfo("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
+        promptLoginRequired(router, "Please sign in to view your wallet.");
         return;
       }
 
@@ -163,14 +189,48 @@ export default function WalletScreen() {
             <Text className="text-center text-[16px] text-white">Withdraw (Unavailable)</Text>
           </Pressable>
 
-          <View className="mt-8 border-b border-dashed" style={{ borderColor: colors.border }} />
-          <View className="flex-row items-center justify-between border-b py-3" style={{ borderColor: colors.border }}>
-            <View>
-              <Text className="text-[18px] font-semibold text-primary">PIN</Text>
-              <Text className="-mt-1 text-[18px]" style={{ color: colors.text }}>••••</Text>
-            </View>
-            <Text className="text-[16px]" style={{ color: colors.textMuted }}>PIN Update Unavailable</Text>
+          <View className="mt-5 rounded-[14px] border p-4" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+            <Text className="text-[16px] font-semibold text-primary">Virtual Account</Text>
+            {accountNumber ? (
+              <>
+                <Text className="mt-3 text-[12px]" style={{ color: colors.textMuted }}>Account Name</Text>
+                <Text className="text-[15px] font-medium" style={{ color: colors.text }}>
+                  {displayAccountName}
+                </Text>
+                <Text className="mt-2 text-[12px]" style={{ color: colors.textMuted }}>Bank</Text>
+                <Text className="text-[15px] font-medium" style={{ color: colors.text }}>
+                  {bankName || "Paystack Partner Bank"}
+                </Text>
+                <Text className="mt-2 text-[12px]" style={{ color: colors.textMuted }}>Account Number</Text>
+                <View className="mt-1 flex-row items-center justify-between">
+                  <Text selectable className="text-[19px] font-semibold tracking-[1px]" style={{ color: colors.text }}>
+                    {accountNumber}
+                  </Text>
+                  <Pressable
+                    onPress={async () => {
+                      try {
+                        await Clipboard.setStringAsync(accountNumber);
+                        notifySuccess("Copied", "Account number copied.");
+                      } catch {
+                        notifyError("Copy failed", "Unable to copy account number right now.");
+                      }
+                    }}
+                    className="rounded-full px-3 py-1.5"
+                    style={{ backgroundColor: colors.elevated }}
+                  >
+                    <Text className="text-[12px] font-medium" style={{ color: colors.text }}>Copy</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <Text className="mt-2 text-[14px]" style={{ color: colors.textMuted }}>
+                Your virtual account is being prepared. Please check back shortly.
+              </Text>
+            )}
           </View>
+
+          <View className="mt-8 border-b border-dashed" style={{ borderColor: colors.border }} />
+          
 
           <View className="mt-8 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">Activities</Text>
@@ -198,9 +258,14 @@ export default function WalletScreen() {
 
           <View className="mt-12 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">Recent transactions</Text>
-            <Pressable onPress={() => void loadWallet(true)} hitSlop={ICON_HIT_SLOP}>
-              <Text className="text-[12px] underline" style={{ color: colors.textMuted }}>Refresh</Text>
-            </Pressable>
+            <View className="flex-row items-center gap-3">
+              <Pressable onPress={() => router.push("/transactions")} hitSlop={ICON_HIT_SLOP}>
+                <Text className="text-[12px] underline" style={{ color: colors.text }}>View all</Text>
+              </Pressable>
+              <Pressable onPress={() => void loadWallet(true)} hitSlop={ICON_HIT_SLOP}>
+                <Text className="text-[12px] underline" style={{ color: colors.textMuted }}>Refresh</Text>
+              </Pressable>
+            </View>
           </View>
 
           {errorText ? (
@@ -209,23 +274,23 @@ export default function WalletScreen() {
             </View>
           ) : null}
 
-          {!isLoading && transactions.length === 0 ? (
+          {!isLoading && sortedTransactions.length === 0 ? (
             <Text className="mt-6 text-[14px]" style={{ color: colors.textMuted }}>No wallet transactions yet.</Text>
           ) : null}
 
           <View className="mt-6 gap-5">
-            {transactions.map((transaction) => {
+            {previewTransactions.map((transaction) => {
               const amount = toTransactionAmount(transaction);
               return (
-                <View key={String(transaction.id)} className="flex-row items-center">
+                <View key={String(transaction.id)} className="flex-row items-center justify-between">
                   <View className="h-10 w-10 rounded-full" style={{ backgroundColor: colors.elevated }} />
-                  <View className="ml-4 flex-1">
+                  <View className="ml-4 flex-1 pr-3">
                     <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>
                       {transaction.description || transaction.reference || "Wallet transaction"}
                     </Text>
                     <Text className="text-[13px]" style={{ color: colors.textMuted }}>{transaction.formatted_date || "Unknown time"}</Text>
                   </View>
-                  <Text className="text-[18px] font-medium" style={{ color: amount.positive ? colors.success : colors.error }}>
+                  <Text className="text-right text-[18px] font-medium" style={{ color: amount.positive ? colors.success : colors.error, minWidth: 96 }}>
                     {amount.text}
                   </Text>
                 </View>

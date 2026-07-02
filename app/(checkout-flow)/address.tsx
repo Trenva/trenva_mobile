@@ -92,7 +92,9 @@ export default function AddressScreen() {
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Address</Text>
-        <BellDarkIcon />
+        <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+          <BellDarkIcon />
+        </Pressable>
       </View>
 
       <View className="px-5">

@@ -9,13 +9,14 @@ import { notifyError } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
-type MethodId = "wallet" | "card";
+type MethodId = "wallet" | "card" | "cod";
 
 function MethodCard({
   id,
   title,
   subtitle,
   active,
+  disabled,
   onSelect,
   colors,
 }: {
@@ -23,19 +24,28 @@ function MethodCard({
   title: string;
   subtitle: string;
   active: boolean;
+  disabled?: boolean;
   onSelect: (id: MethodId) => void;
   colors: { card: string; border: string; elevated: string; text: string; textMuted: string; primary: string };
 }) {
   return (
     <Pressable
       onPress={() => onSelect(id)}
+      disabled={disabled}
       className="mb-3 rounded-2xl border px-4 py-4"
-      style={{ borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.elevated : colors.card }}
+      style={{
+        borderColor: active ? colors.primary : colors.border,
+        backgroundColor: active ? colors.elevated : colors.card,
+        opacity: disabled ? 0.6 : 1,
+      }}
     >
       <View className="flex-row items-center justify-between">
         <View>
           <Text className="text-[15px] font-semibold" style={{ color: colors.text }}>{title}</Text>
-          <Text className="mt-1 text-[13px]" style={{ color: colors.textMuted }}>{subtitle}</Text>
+          <Text className="mt-1 text-[13px]" style={{ color: colors.textMuted }}>
+            {subtitle}
+            {disabled ? " (Coming soon)" : ""}
+          </Text>
         </View>
         <View className="h-5 w-5 rounded-full border-2 items-center justify-center" style={{ borderColor: active ? colors.primary : colors.border }}>
           {active ? <View className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
@@ -61,6 +71,7 @@ export default function PaymentMethodsScreen() {
   }, [selectedPaymentMethod]);
 
   function handleSelectMethod(method: MethodId) {
+    if (method === "cod") return;
     setSelectedMethod(method);
     setSelectedPaymentMethod(method === "wallet" ? "wallet" : "paystack");
   }
@@ -129,6 +140,15 @@ export default function PaymentMethodsScreen() {
             title="Card / Paystack"
             subtitle="Pay with your debit or credit card"
             active={selectedMethod === "card"}
+            onSelect={handleSelectMethod}
+            colors={colors}
+          />
+          <MethodCard
+            id="cod"
+            title="Pay on Delivery"
+            subtitle="Pay with cash when your order arrives"
+            active={false}
+            disabled
             onSelect={handleSelectMethod}
             colors={colors}
           />

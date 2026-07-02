@@ -3,30 +3,50 @@
     "name": "Trenva",
     "slug": "trenva",
     "scheme": "trenva",
-    "version": "1.0.4",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.trenva.trenva",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Trenva uses your location to show your current city on the home screen."
+        "NSLocationWhenInUseUsageDescription": "Trenva uses your location to show your current city on the home screen.",
+        "LSApplicationQueriesSchemes": ["trenva"]
       }
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "",
+        "foregroundImage": "./assets/icon.png",
+        "monochromeImage": "./assets/icon.png",
         "backgroundColor": "#FFFFFF"
       },
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
+        "POST_NOTIFICATIONS",
+        "android.permission.POST_NOTIFICATIONS",
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.slamas.trenva"
+      "package": "com.trenva.trenva",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "trenva"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -35,6 +55,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF9F0A",
+          "defaultChannel": "default"
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-location",
@@ -46,8 +74,15 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "0d523d74-ec22-4732-b7f9-0079fdafccd5"
+        "projectId": "d7c09e07-04b8-47a7-9572-8492617ac2ad"
       }
-    }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d7c09e07-04b8-47a7-9572-8492617ac2ad"
+    },
+    "owner": "trenva"
   }
 }

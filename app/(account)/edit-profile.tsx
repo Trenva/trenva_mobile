@@ -12,6 +12,7 @@ import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 
 function TrashIcon({ color }: { color: string }) {
   return (
@@ -137,8 +138,7 @@ export default function EditProfileScreen() {
       } catch (error) {
         if (isUnauthorizedError(error)) {
           await clearAuthTokens();
-          notifyInfo("Session expired", "Please log in again.");
-          router.replace("/(auth)/login");
+          promptLoginRequired(router, "Please sign in to edit your profile.");
           return;
         }
         notifyError("Profile load failed", "Unable to load profile data.");
@@ -239,8 +239,7 @@ export default function EditProfileScreen() {
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
-        notifyInfo("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
+        promptLoginRequired(router, "Please sign in to edit your profile.");
         return;
       }
       notifyError("Update failed", getApiErrorMessage(error, "Unable to update profile right now."));

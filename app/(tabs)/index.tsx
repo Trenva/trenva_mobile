@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Tex
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import TawkChatBubble from "../../components/chat/TawkChatBubble.native";
 import {
   BellIcon,
   CouponIcon,
@@ -33,12 +34,17 @@ import {
   toggleWishlistByProductId,
 } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
+import { clearAuthTokens, getAccessToken } from "../../lib/auth/tokens";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
-import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
+import { CachedImage, ProductCardImage, prefetchImageUris } from "../../components/ui/cached-image";
 import { fontStyles } from "../../lib/ui/typography";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { HomeFeedSkeleton } from "../../components/ui/loading-skeleton";
 import { deleteCached } from "../../lib/cache/memory-cache";
+import { isUnauthorizedError } from "../../lib/api/errors";
+import { promptLoginRequired } from "../../lib/ui/login-required";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
+import { fetchProfile } from "../../lib/api/auth";
 
 type ProductCardItem = {
   productId?: number;
@@ -119,12 +125,16 @@ function mapFlashSaleProductToCard(
 function PromoCard({
   item,
   compact = false,
+  width,
+  imageHeight,
   wishlisted,
   onToggleWishlist,
   onPress,
 }: {
   item: ProductCardItem;
   compact?: boolean;
+  width?: number;
+  imageHeight?: number;
   wishlisted: boolean;
   onToggleWishlist: (item: ProductCardItem) => void;
   onPress: () => void;
@@ -137,15 +147,18 @@ function PromoCard({
     <Pressable
       onPress={onPress}
       className={`rounded-[6px] ${compact ? "mr-2 w-[140px]" : "w-[168px]"}`}
-      style={{ backgroundColor: colors.card }}
+      style={[{ backgroundColor: colors.card }, !compact && width ? { width } : null]}
     >
-      <View className={`relative overflow-hidden rounded-t-[6px] ${compact ? "h-[110px]" : "h-[122px]"}`} style={{ backgroundColor: colors.elevated }}>
+      <View
+        className={"relative overflow-hidden rounded-t-[6px]"}
+        style={{ backgroundColor: colors.elevated, height: imageHeight ?? (compact ? 110 : 122) }}
+      >
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {item.imageUrl ? <CachedImage uri={item.imageUrl} className="h-full w-full" /> : null}
+        {item.imageUrl ? <ProductCardImage uri={item.imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -197,12 +210,16 @@ function CategoryChip({ title, imageUrl, onPress }: { title: string; imageUrl?: 
 function ProductRow({
   items,
   compact = false,
+  compactCardWidth,
+  compactImageHeight,
   wishlistedProductIds,
   onToggleWishlist,
   onProductPress,
 }: {
   items: ProductCardItem[];
   compact?: boolean;
+  compactCardWidth?: number;
+  compactImageHeight?: number;
   wishlistedProductIds: Set<number>;
   onToggleWishlist: (item: ProductCardItem) => void;
   onProductPress: (item: ProductCardItem) => void;
@@ -214,6 +231,8 @@ function ProductRow({
           key={item.slug}
           item={item}
           compact={compact}
+          width={compact ? compactCardWidth : undefined}
+          imageHeight={compact ? compactImageHeight : undefined}
           wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
           onPress={() => onProductPress(item)}
           onToggleWishlist={onToggleWishlist}
@@ -250,9 +269,44 @@ export default function HomeScreen() {
   const [activeFlashSaleIds, setActiveFlashSaleIds] = useState<number[]>([]);
   const [flashSaleRemainingSeconds, setFlashSaleRemainingSeconds] = useState<number>(0);
   const [flashSaleEndsAtMs, setFlashSaleEndsAtMs] = useState<number | null>(null);
+  const suggestedGrid = getResponsiveProductGrid({ width });
+  const horizontalCardWidth = width >= 1100 ? 172 : width >= 768 ? 164 : undefined;
+  const horizontalImageHeight = width >= 1100 ? 128 : width >= 768 ? 122 : undefined;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
 
   const resetFilters = useProductFilterStore((state) => state.resetFilters);
   const setFilters = useProductFilterStore((state) => state.setFilters);
+
+  useEffect(() => {
+    let isMounted = true;
+      
+    async function fetchUserProfile() {
+      try {
+      const token = await getAccessToken();
+        if (!token) {
+          return;
+        }
+
+      const profile = await fetchProfile();
+      setName((profile?.first_name as string | undefined)?.trim() ?? "");
+      setEmail((profile?.email as string | undefined)?.trim() ?? "");
+
+      return profile;
+      } catch {
+        if (isMounted) {
+          setName("");
+          setEmail("");
+        }
+      }
+  }
+
+    void fetchUserProfile()
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
 
   useEffect(() => {
     let isMounted = true;
@@ -461,22 +515,27 @@ export default function HomeScreen() {
         const longitude = position.coords.longitude;
 
         let label = "Location unavailable";
-        try {
-          // On web/dev this avoids deprecated Google Geocoding paths.
-          label = await reverseByOpenStreetMap(latitude, longitude);
-        } catch {
-          if (Platform.OS !== "web") {
+        // Prefer native reverse geocode on device for better stability.
+        if (Platform.OS !== "web") {
+          try {
+            const place = await Location.reverseGeocodeAsync({ latitude, longitude });
+            const first = place[0];
+            const city = first?.city || first?.district || first?.subregion || first?.region || "Your Area";
+            const country = first?.country || "Nigeria";
+            label = `${city}, ${country}`;
+          } catch {
+            // Fallback to OpenStreetMap if native reverse geocode fails.
             try {
-              const place = await Location.reverseGeocodeAsync({ latitude, longitude });
-              const first = place[0];
-              const city = first?.city || first?.district || first?.subregion || first?.region || "Your Area";
-              const country = first?.country || "Unknown";
-              label = `${city}, ${country}`;
+              label = await reverseByOpenStreetMap(latitude, longitude);
             } catch {
-              label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+              label = "Your Area, Nigeria";
             }
-          } else {
-            label = `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+          }
+        } else {
+          try {
+            label = await reverseByOpenStreetMap(latitude, longitude);
+          } catch {
+            label = "Your Area, Nigeria";
           }
         }
 
@@ -538,7 +597,11 @@ export default function HomeScreen() {
     try {
       const result = await toggleWishlistByProductId(productId);
       notifySuccess(result.action === "added" ? "Added to wishlist" : "Removed from wishlist", item.name);
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to manage your wishlist.");
+        return;
+      }
       setWishlistedProductIds((prev) => {
         const next = new Set(prev);
         if (wasWishlisted) next.add(productId);
@@ -549,14 +612,11 @@ export default function HomeScreen() {
     }
   }
 
-  const suggestedRows = useMemo(() => {
-    const rows: ProductCardItem[][] = [];
-    for (let i = 0; i < allProducts.length; i += 2) rows.push(allProducts.slice(i, i + 2));
-    return rows;
-  }, [allProducts]);
-
   const categorySections = homeCategorySections;
-  const hasActiveFlashSales = activeFlashSaleIds.length > 0 && saleProducts.length > 0;
+  const hasActiveFlashSales =
+    activeFlashSaleIds.length > 0 &&
+    saleProducts.length > 0 &&
+    flashSaleRemainingSeconds > 0;
   const flashCountdownLabel = formatCountdown(flashSaleRemainingSeconds);
 
   useEffect(() => {
@@ -601,7 +661,9 @@ export default function HomeScreen() {
               </Text>
               <Text className="text-[11px]" style={{ color: colors.textMuted }}>▼</Text>
             </View>
-            <BellIcon />
+            <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+              <BellIcon />
+            </Pressable>
           </View>
           <Pressable
             onPress={() => {
@@ -734,6 +796,8 @@ export default function HomeScreen() {
                 <ProductRow
                   items={saleProducts.slice(0, 10)}
                   compact
+                  compactCardWidth={horizontalCardWidth}
+                  compactImageHeight={horizontalImageHeight}
                   wishlistedProductIds={wishlistedProductIds}
                   onProductPress={(item) =>
                     router.push({
@@ -769,6 +833,8 @@ export default function HomeScreen() {
               <ProductRow
                 items={(featuredProducts.length ? featuredProducts : allProducts).slice(0, 10)}
                 compact
+                compactCardWidth={horizontalCardWidth}
+                compactImageHeight={horizontalImageHeight}
                 wishlistedProductIds={wishlistedProductIds}
                 onProductPress={(item) =>
                   router.push({
@@ -800,6 +866,8 @@ export default function HomeScreen() {
                 <ProductRow
                   items={items.slice(0, 10)}
                   compact
+                  compactCardWidth={horizontalCardWidth}
+                  compactImageHeight={horizontalImageHeight}
                   wishlistedProductIds={wishlistedProductIds}
                   onProductPress={(item) =>
                     router.push({
@@ -816,24 +884,24 @@ export default function HomeScreen() {
               <>
                 <SectionTitle title="Suggested for you" hideViewAll />
                 <View className="px-4 pb-10">
-                  {suggestedRows.map((row, rowIndex) => (
-                    <View key={`suggested-row-${rowIndex}`} className={`${rowIndex < suggestedRows.length - 1 ? "mb-4" : ""} flex-row justify-center gap-3`}>
-                      {row.map((item) => (
-                        <PromoCard
-                          key={item.slug}
-                          item={item}
-                          wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
-                          onPress={() =>
-                            router.push({
-                              pathname: "/product/[slug]",
-                              params: { slug: item.slug, name: item.name, price: item.price },
-                            })
-                          }
-                          onToggleWishlist={handleToggleWishlist}
-                        />
-                      ))}
-                    </View>
-                  ))}
+                  <View className="flex-row flex-wrap justify-center gap-3">
+                    {allProducts.map((item) => (
+                      <PromoCard
+                        key={item.slug}
+                        item={item}
+                        width={suggestedGrid.cardWidth}
+                        imageHeight={suggestedGrid.imageHeight}
+                        wishlisted={typeof item.productId === "number" ? wishlistedProductIds.has(item.productId) : false}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/product/[slug]",
+                            params: { slug: item.slug, name: item.name, price: item.price },
+                          })
+                        }
+                        onToggleWishlist={handleToggleWishlist}
+                      />
+                    ))}
+                  </View>
                 </View>
               </>
             ) : (
@@ -857,6 +925,10 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+      <TawkChatBubble
+        userName={name}
+        userEmail={email}
+      />
     </SafeAreaView>
   );
 }

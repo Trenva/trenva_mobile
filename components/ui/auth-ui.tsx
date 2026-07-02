@@ -275,7 +275,6 @@ export function PhoneFieldWithCountry({
   const [open, setOpen] = useState(false);
   const countries = [
     { code: "+234", flag: "🇳🇬", name: "Nigeria" },
-    { code: "+233", flag: "🇬🇭", name: "Ghana" },
   ];
   const selectedCountry = countries.find((item) => item.code === countryCode) ?? countries[0];
 

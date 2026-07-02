@@ -9,11 +9,12 @@ import { applyProductFilters } from "../../lib/search/product-filters";
 import { formatMoney, getPublishedProductsFiltered, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
-function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
+function ProductCard({ item, onPress, width, imageHeight }: { item: ApiProduct; onPress: () => void; width: number; imageHeight: number }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -23,16 +24,16 @@ function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void 
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -59,6 +60,7 @@ export default function LevelTwoProductsScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
   const { category, subcategory, leveltwo } = useLocalSearchParams<{ category?: string; subcategory?: string; leveltwo?: string }>();
   const categoryTitle = (category ?? "Category").trim();
   const subcategoryTitle = (subcategory ?? "Subcategory").trim();
@@ -111,7 +113,7 @@ export default function LevelTwoProductsScreen() {
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[0, 1]}
+        stickyHeaderIndices={[0]}
         contentContainerStyle={{ paddingBottom: 20 }}
         refreshControl={
           <RefreshControl
@@ -123,31 +125,35 @@ export default function LevelTwoProductsScreen() {
           />
         }
       >
-        <View
-          className="px-4 pb-2"
-          style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
-        >
-          <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}><BackIcon /></Pressable>
-            <View className="flex-row items-center gap-4">
-              <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
-              <BellDarkIcon />
+        <View style={{ backgroundColor: colors.background }}>
+          <View
+            className="px-4 pb-1"
+            style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}
+          >
+            <View className="mb-1 flex-row items-center justify-between">
+              <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}><BackIcon /></Pressable>
+              <View className="flex-row items-center gap-4">
+                <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
+                <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                  <BellDarkIcon />
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", backgroundColor: colors.background }} className="px-4 pb-4 pt-2">
-          <View className="flex-row items-center justify-between">
-            <View className="pr-3">
-              <Text numberOfLines={1} className="text-[11px]" style={{ color: colors.textMuted }}>
-                {categoryTitle} {" > "} {subcategoryTitle} {" > "} {levelTwoTitle}
-              </Text>
-              <Text className="text-[12px]" style={{ color: colors.textMuted }}>{categoryTitle} - {subcategoryTitle}</Text>
-              <Text numberOfLines={2} className="text-[21px] font-semibold" style={{ color: colors.text }}>{levelTwoTitle}</Text>
+          <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center", backgroundColor: colors.background }} className="px-4 pb-3 pt-1">
+            <View className="flex-row items-center justify-between">
+              <View className="pr-3">
+                <Text numberOfLines={1} className="text-[11px]" style={{ color: colors.textMuted }}>
+                  {categoryTitle} {" > "} {subcategoryTitle} {" > "} {levelTwoTitle}
+                </Text>
+                <Text className="text-[12px]" style={{ color: colors.textMuted }}>{categoryTitle} - {subcategoryTitle}</Text>
+                <Text numberOfLines={2} className="text-[21px] font-semibold" style={{ color: colors.text }}>{levelTwoTitle}</Text>
+              </View>
+              <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
+                <Text className="text-[12px] font-semibold text-primary">Filter</Text>
+              </Pressable>
             </View>
-            <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
-              <Text className="text-[12px] font-semibold text-primary">Filter</Text>
-            </Pressable>
           </View>
         </View>
 
@@ -162,11 +168,13 @@ export default function LevelTwoProductsScreen() {
               </Pressable>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {filteredProducts.map((item) => (
                 <ProductCard
                   key={String(item.id ?? item.pid)}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",

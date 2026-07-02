@@ -19,7 +19,7 @@ import {
   ProfileCircleIcon,
   WalletOutlineIcon,
 } from "../../components/ui/general-ui";
-import { clearAuthTokens } from "../../lib/auth/tokens";
+import { clearAuthTokens, getAccessToken } from "../../lib/auth/tokens";
 import { fetchProfile } from "../../lib/api/auth";
 import { notifySuccess } from "../../lib/ui/notify";
 import { resolveMediaUrl } from "../../lib/api/shop";
@@ -31,10 +31,12 @@ function ProfileMenuRow({
   icon,
   label,
   onPress,
+  rightIcon,
 }: {
   icon: ReactNode;
   label: string;
   onPress?: () => void;
+  rightIcon?: ReactNode;
 }) {
   const { colors } = useAppTheme();
   return (
@@ -45,7 +47,7 @@ function ProfileMenuRow({
           {label}
         </Text>
       </View>
-      <ChevronRightDarkIcon color={colors.textMuted} />
+      {rightIcon ?? <ChevronRightDarkIcon color={colors.textMuted} />}
     </Pressable>
   );
 }
@@ -60,13 +62,26 @@ export default function ProfileScreen() {
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isHelpExpanded, setIsHelpExpanded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadProfile() {
       try {
+        const token = await getAccessToken();
+        if (!token) {
+          if (isMounted) {
+            setIsLoggedIn(false);
+            setProfileImageUrl(null);
+            setDisplayName("Guest");
+          }
+          return;
+        }
+
         const profile = await fetchProfile();
+        if (isMounted) setIsLoggedIn(true);
         const firstName = (profile?.first_name as string | undefined)?.trim() ?? "";
         const lastName = (profile?.last_name as string | undefined)?.trim() ?? "";
         const fullName = `${firstName} ${lastName}`.trim();
@@ -92,8 +107,9 @@ export default function ProfileScreen() {
         }
       } catch {
         if (isMounted) {
+          setIsLoggedIn(false);
           setProfileImageUrl(null);
-          setDisplayName("User");
+          setDisplayName("Guest");
         }
       } finally {
         if (isMounted) {
@@ -112,7 +128,16 @@ export default function ProfileScreen() {
   async function refreshProfile() {
     setIsRefreshing(true);
     try {
+      const token = await getAccessToken();
+      if (!token) {
+        setIsLoggedIn(false);
+        setProfileImageUrl(null);
+        setDisplayName("Guest");
+        return;
+      }
+
       const profile = await fetchProfile();
+      setIsLoggedIn(true);
       const firstName = (profile?.first_name as string | undefined)?.trim() ?? "";
       const lastName = (profile?.last_name as string | undefined)?.trim() ?? "";
       const fullName = `${firstName} ${lastName}`.trim();
@@ -190,14 +215,6 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View className="mb-2 px-4 py-3" style={{ backgroundColor: colors.card }}>
-            <Pressable onPress={() => router.push("/verification-code")} className="flex-row items-center justify-between">
-              <Text className="pl-9 text-[16px]" style={[fontStyles.medium, { color: colors.text }]}>
-                Security Setting
-              </Text>
-              <ChevronDownDarkIcon color={colors.textMuted} />
-            </Pressable>
-          </View>
           <Pressable onPress={() => router.push("/edit-profile")} className="mb-2 px-4 py-3" style={{ backgroundColor: colors.card }}>
             <Text className="pl-9 text-[16px]" style={[fontStyles.medium, { color: colors.text }]}>
               Edit Profile
@@ -227,13 +244,52 @@ export default function ProfileScreen() {
           <View className="mb-8">
             <ProfileMenuRow icon={<WalletOutlineIcon color={colors.text} />} label="Wallet" onPress={() => router.push("/wallet")} />
             <ProfileMenuRow icon={<HeartOutlineDarkIcon color={colors.text} />} label="Wishlist" onPress={() => router.push("/(tabs)/wishlist")} />
+            <ProfileMenuRow icon={<OrdersOutlineIcon color={colors.text} />} label="Followed Vendors" onPress={() => router.push("/following-vendors")} />
             <ProfileMenuRow icon={<CouponOutlineIcon color={colors.text} />} label="Coupon" onPress={() => router.push("/coupons")} />
-            <ProfileMenuRow icon={<BellOutlineIcon color={colors.text} />} label="Notifications" onPress={() => router.push("/help-center")} />
+            <ProfileMenuRow icon={<BellOutlineIcon color={colors.text} />} label="Notifications" onPress={() => router.push("/notifications")} />
             <ProfileMenuRow icon={<GlobeOutlineIcon color={colors.text} />} label="Appearance" onPress={() => router.push("/appearance")} />
             <ProfileMenuRow icon={<OrdersOutlineIcon color={colors.text} />} label="My Orders" onPress={() => router.push("/orders")} />
             <ProfileMenuRow icon={<HeadsetOutlineIcon color={colors.text} />} label="Customer Care" onPress={() => router.push("/customer-support")} />
-            <ProfileMenuRow icon={<HelpCircleIcon color={colors.text} />} label="Help" onPress={() => router.push("/help-center")} />
-            <ProfileMenuRow icon={<LogoutOutlineIcon color={colors.text} />} label="Logout" onPress={handleLogout} />
+            <ProfileMenuRow
+              icon={<HelpCircleIcon color={colors.text} />}
+              label="Help"
+              onPress={() => setIsHelpExpanded((prev) => !prev)}
+              rightIcon={
+                <View style={{ transform: [{ rotate: isHelpExpanded ? "180deg" : "0deg" }] }}>
+                  <ChevronDownDarkIcon color={colors.textMuted} />
+                </View>
+              }
+            />
+            {isHelpExpanded ? (
+              <View style={{ backgroundColor: colors.card }}>
+                <Pressable onPress={() => router.push("/help-center")} className="px-12 py-3">
+                  <Text className="text-[15px]" style={[fontStyles.medium, { color: colors.text }]}>
+                    FAQ
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => router.push({ pathname: "/help-content", params: { type: "privacy" } })} className="px-12 py-3">
+                  <Text className="text-[15px]" style={[fontStyles.medium, { color: colors.text }]}>
+                    Privacy & Policy
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => router.push({ pathname: "/help-content", params: { type: "terms" } })} className="px-12 py-3">
+                  <Text className="text-[15px]" style={[fontStyles.medium, { color: colors.text }]}>
+                    Terms of Use
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <ProfileMenuRow
+              icon={<LogoutOutlineIcon color={colors.text} />}
+              label={isLoggedIn ? "Logout" : "Login"}
+              onPress={() => {
+                if (isLoggedIn) {
+                  void handleLogout();
+                } else {
+                  router.replace("/(auth)/login");
+                }
+              }}
+            />
           </View>
         </View>
         </View>

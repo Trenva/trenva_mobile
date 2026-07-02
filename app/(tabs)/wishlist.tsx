@@ -19,9 +19,10 @@ import {
   toggleWishlistByProductId,
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
 type WishlistCardItem = {
   id: number;
@@ -34,23 +35,35 @@ type WishlistCardItem = {
   imageUrl?: string;
 };
 
-function FavoriteCard({ item, onRemove, onPress }: { item: WishlistCardItem; onRemove: () => void; onPress: () => void }) {
+function FavoriteCard({
+  item,
+  onRemove,
+  onPress,
+  width,
+  imageHeight,
+}: {
+  item: WishlistCardItem;
+  onRemove: () => void;
+  onPress: () => void;
+  width: number;
+  imageHeight: number;
+}) {
   const { colors } = useAppTheme();
   const discount = Number(item.discountPercentage ?? 0);
   const isOutOfStock = isExplicitlyOutOfStock(item.inStock);
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[126px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {item.imageUrl ? <CachedImage uri={item.imageUrl} className="h-full w-full" /> : null}
+        {item.imageUrl ? <ProductCardImage uri={item.imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -80,11 +93,15 @@ function RecommendationCard({
   isWishlisted,
   onToggleWishlist,
   onPress,
+  width,
+  imageHeight,
 }: {
   product: ApiProduct;
   isWishlisted: boolean;
   onToggleWishlist: () => void;
   onPress: () => void;
+  width: number;
+  imageHeight: number;
 }) {
   const { colors } = useAppTheme();
   const imageUrl = resolveProductCardImageUrl(product.image);
@@ -96,16 +113,16 @@ function RecommendationCard({
   return (
     <Pressable
       onPress={onPress}
-      className="mr-4 w-[145px] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mr-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -149,6 +166,9 @@ export default function WishlistScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
+  const recommendationCardWidth = width >= 1100 ? 172 : width >= 768 ? 164 : 145;
+  const recommendationImageHeight = width >= 1100 ? 128 : width >= 768 ? 122 : 112;
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [wishlistItems, setWishlistItems] = useState<WishlistCardItem[]>([]);
@@ -286,7 +306,9 @@ export default function WishlistScreen() {
               <Pressable onPress={() => router.push("/search")}>
                 <SearchGrayIcon />
               </Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
 
@@ -311,11 +333,13 @@ export default function WishlistScreen() {
           </View>
         ) : (
           <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }} className="px-4 pt-7">
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {wishlistItems.map((item) => (
                 <FavoriteCard
                   key={item.id}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",
@@ -346,6 +370,8 @@ export default function WishlistScreen() {
               <RecommendationCard
                 key={product.pid}
                 product={product}
+                width={recommendationCardWidth}
+                imageHeight={recommendationImageHeight}
                 isWishlisted={typeof product.id === "number" ? wishlistedProductIds.has(product.id) : false}
                 onPress={() =>
                   router.push({

@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon, BellDarkIcon, SearchGrayIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon } from "../../components/ui/home-ui";
 import { applyProductFilters } from "../../lib/search/product-filters";
-import { formatMoney, getPublishedProductsFiltered, getSubcategories, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct, type ApiSubCategory } from "../../lib/api/shop";
+import { formatMoney, getPublishedProductsFilteredPage, getSubcategories, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiProduct, type ApiSubCategory } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
 function normalize(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void }) {
+function ProductCard({ item, onPress, width, imageHeight }: { item: ApiProduct; onPress: () => void; width: number; imageHeight: number }) {
   const { colors } = useAppTheme();
   const price = formatMoney(item.price);
   const oldPrice = item.old_price ? formatMoney(item.old_price) : null;
@@ -27,16 +28,16 @@ function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void 
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
         {discount > 0 ? (
           <View className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-0.5">
             <Text className="text-[9px] font-semibold text-white">{`-${Math.round(discount)}%`}</Text>
           </View>
         ) : null}
-        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -62,12 +63,16 @@ function ProductCard({ item, onPress }: { item: ApiProduct; onPress: () => void 
 export default function CategoryProductsScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const grid = getResponsiveProductGrid({ width });
   const { category, title, cid } = useLocalSearchParams<{ category?: string; title?: string; cid?: string }>();
   const categoryTitle = (title ?? category ?? "Category").trim();
   const categoryCid = String(cid ?? "").trim();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [nextUrl, setNextUrl] = useState<string | null>(null);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [subcategories, setSubcategories] = useState<ApiSubCategory[]>([]);
   const filters = useProductFilterStore();
@@ -80,17 +85,20 @@ export default function CategoryProductsScreen() {
   const loadInitial = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [filteredProducts, subRows] = await Promise.all([
-        getPublishedProductsFiltered({
+      const [page, subRows] = await Promise.all([
+        getPublishedProductsFilteredPage({
           categoryTitle,
           categoryCid: categoryCid || undefined,
+          page: 1,
         }),
         getSubcategories(),
       ]);
-      setProducts(filteredProducts);
+      setProducts(page.results);
+      setNextUrl(page.next);
       setSubcategories(subRows.filter((s) => normalize(s.category_name) === normalize(categoryTitle)));
     } catch {
       setProducts([]);
+      setNextUrl(null);
       setSubcategories([]);
       notifyError("Category failed", "Unable to load category products right now.");
     } finally {
@@ -101,6 +109,28 @@ export default function CategoryProductsScreen() {
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
+
+  async function loadMore() {
+    if (!nextUrl || isLoadingMore || isLoading) return;
+    try {
+      setIsLoadingMore(true);
+      const page = await getPublishedProductsFilteredPage({ nextUrl });
+      setProducts((prev) => [...prev, ...page.results]);
+      setNextUrl(page.next);
+    } catch {
+      notifyError("Load failed", "Unable to load more products.");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
+
+  function handleScroll(event: any) {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const remaining = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+    if (remaining < 180) {
+      void loadMore();
+    }
+  }
 
   const filteredProducts = useMemo(
     () =>
@@ -119,7 +149,7 @@ export default function CategoryProductsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 20 }}
-        stickyHeaderIndices={[0, 1]}
+        stickyHeaderIndices={[0]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -129,44 +159,50 @@ export default function CategoryProductsScreen() {
             }}
           />
         }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
-        <View style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }} className="px-4 pb-2">
-          <View className="mb-3 flex-row items-center justify-between">
-            <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
-              <BackIcon />
-            </Pressable>
-            <View className="flex-row items-center gap-4">
-              <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
-              <BellDarkIcon />
+        <View style={{ backgroundColor: colors.background }}>
+          <View style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }} className="px-4 pb-1">
+            <View className="mb-1 flex-row items-center justify-between">
+              <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
+                <BackIcon />
+              </Pressable>
+              <View className="flex-row items-center gap-4">
+                <Pressable onPress={() => router.push("/search")}><SearchGrayIcon /></Pressable>
+                <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                  <BellDarkIcon />
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
 
-        <View className="px-4 pb-4 pt-1" style={{ backgroundColor: colors.background }}>
-          <View className="mt-4 flex-row items-center justify-between">
-            <Text numberOfLines={1} className="text-[24px] font-medium" style={{ color: colors.text }}>{categoryTitle}</Text>
-            <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
-              <Text className="text-[12px] font-semibold text-primary">Filter</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
-            {subcategories.map((sub) => (
-              <Pressable
-                key={sub.scid}
-                onPress={() =>
-                  router.push({
-                    pathname: "/subcategory-products",
-                    params: { category: categoryTitle, subcategory: sub.title },
-                  })
-                }
-                className="mr-2 rounded-full px-4 py-2"
-                style={{ backgroundColor: colors.card }}
-              >
-                <Text className="text-[13px]" style={{ color: colors.text }}>{sub.title}</Text>
+          <View className="px-4 pb-3 pt-1" style={{ backgroundColor: colors.background }}>
+            <View className="mt-2 flex-row items-center justify-between">
+              <Text numberOfLines={1} className="text-[24px] font-medium" style={{ color: colors.text }}>{categoryTitle}</Text>
+              <Pressable onPress={() => router.push("/filters")} className="rounded-[6px] border border-primary px-3 py-1.5">
+                <Text className="text-[12px] font-semibold text-primary">Filter</Text>
               </Pressable>
-            ))}
-          </ScrollView>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
+              {subcategories.map((sub) => (
+                <Pressable
+                  key={sub.scid}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/subcategory-products",
+                      params: { category: categoryTitle, subcategory: sub.title },
+                    })
+                  }
+                  className="mr-2 rounded-full px-4 py-2"
+                  style={{ backgroundColor: colors.card }}
+                >
+                  <Text className="text-[13px]" style={{ color: colors.text }}>{sub.title}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
         </View>
 
         <View className="px-4 pt-6">
@@ -180,11 +216,13 @@ export default function CategoryProductsScreen() {
               </Pressable>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {filteredProducts.map((item) => (
                 <ProductCard
                   key={String(item.id ?? item.pid)}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",
@@ -195,6 +233,11 @@ export default function CategoryProductsScreen() {
               ))}
             </View>
           )}
+          {isLoadingMore ? (
+            <View className="items-center py-4">
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </View>

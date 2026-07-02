@@ -6,12 +6,13 @@ import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { fetchProfile } from "../../lib/api/auth";
 import {
   formatMoney,
   getCartItems,
   getCartTotal,
+  getDeliveryFeeByAddress,
   mobilePaystackInit,
   mobilePaystackVerify,
   mobileWalletCheckout,
@@ -21,6 +22,16 @@ import {
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useCheckoutStore } from "../../store/checkout-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
+import { promptLoginRequired } from "../../lib/ui/login-required";
+
+const deliveryMethods = ["Kwikpik delivery", "Pick Up Station"] as const;
+
+type DeliveryMethod = (typeof deliveryMethods)[number];
+
+function toBackendDeliveryMethod(method: string) {
+  return method === "Pick Up Station" ? "Pickup Station" : "Door Step Delivery";
+}
 
 function CardIcon() {
   return (
@@ -38,6 +49,8 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const selectedAddress = useCheckoutStore((state) => state.selectedAddress);
   const selectedPaymentMethod = useCheckoutStore((state) => state.selectedPaymentMethod);
+  const selectedDeliveryMethod = useCheckoutStore((state) => state.selectedDeliveryMethod);
+  const setSelectedDeliveryMethod = useCheckoutStore((state) => state.setSelectedDeliveryMethod);
   const setLastOrderId = useCheckoutStore((state) => state.setLastOrderId);
   const setAppliedCoupon = useCheckoutStore((state) => state.setAppliedCoupon);
   const appliedCoupon = useCheckoutStore((state) => state.appliedCoupon);
@@ -47,13 +60,14 @@ export default function CheckoutScreen() {
   const [couponInput, setCouponInput] = useState("");
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+  const [isLoadingDeliveryFee, setIsLoadingDeliveryFee] = useState(false);
   const [cartSnapshot, setCartSnapshot] = useState<{
     items: Awaited<ReturnType<typeof getCartItems>>;
     totalItems: number;
     totalPrice: number;
   } | null>(null);
 
-  const firstCartItem = cartSnapshot?.items?.[0];
   const rawTotal = Number(cartSnapshot?.totalPrice ?? 0);
   const couponMinimumOrder = Number(appliedCoupon?.minimumOrder ?? 0);
   const couponEligible = !appliedCoupon || rawTotal >= couponMinimumOrder;
@@ -63,7 +77,12 @@ export default function CheckoutScreen() {
         ? Math.min((rawTotal * Number(appliedCoupon.discountValue ?? 0)) / 100, rawTotal)
         : Math.min(Number(appliedCoupon.discountValue ?? 0), rawTotal)
       : 0;
-  const payableTotal = Math.max(0, rawTotal - couponDiscount);
+  const payableTotal = Math.max(0, rawTotal - couponDiscount + (deliveryFee ?? 0));
+
+  function isInsufficientWalletBalanceMessage(message?: string | null) {
+    const normalized = String(message ?? "").toLowerCase();
+    return normalized.includes("insufficient") || (normalized.includes("balance") && normalized.includes("wallet"));
+  }
 
   async function loadCheckoutSnapshot() {
     try {
@@ -83,6 +102,31 @@ export default function CheckoutScreen() {
   useEffect(() => {
     void loadCheckoutSnapshot();
   }, []);
+
+  useEffect(() => {
+    async function loadDeliveryFee() {
+      if (!selectedAddress?.state || !selectedAddress?.city) {
+        setDeliveryFee(null);
+        return;
+      }
+
+      setIsLoadingDeliveryFee(true);
+      try {
+        const feeResult = await getDeliveryFeeByAddress(selectedAddress.state, selectedAddress.city);
+        if (feeResult.success && typeof feeResult.delivery_fee === "number") {
+          setDeliveryFee(feeResult.delivery_fee);
+        } else {
+          setDeliveryFee(0);
+        }
+      } catch {
+        setDeliveryFee(0);
+      } finally {
+        setIsLoadingDeliveryFee(false);
+      }
+    }
+
+    void loadDeliveryFee();
+  }, [selectedAddress]);
 
   async function handleMakePayment() {
     if (!selectedAddress) {
@@ -112,14 +156,20 @@ export default function CheckoutScreen() {
       if (selectedPaymentMethod === "wallet") {
         const walletResult = await mobileWalletCheckout({
           addressId: selectedAddress.id,
-          deliveryMethod: "Door Step Delivery",
+          deliveryMethod: toBackendDeliveryMethod(selectedDeliveryMethod),
           orderNote: "Null",
           couponCode: appliedCoupon?.code,
           couponId: appliedCoupon?.id,
+          deliveryFee,
         });
 
         if (!walletResult.success) {
-          notifyError("Wallet payment failed", walletResult.error ?? "Could not complete wallet payment.");
+          const walletError = walletResult.error ?? "";
+          if (isInsufficientWalletBalanceMessage(walletError)) {
+            notifyError("Insufficient balance", "Fund your wallet and try again.");
+          } else {
+            notifyError("Wallet payment failed", walletError || "Could not complete wallet payment.");
+          }
           return;
         }
 
@@ -141,10 +191,11 @@ export default function CheckoutScreen() {
 
         const initResult = await mobilePaystackInit({
           addressId: selectedAddress.id,
-          deliveryMethod: "Door Step Delivery",
+          deliveryMethod: toBackendDeliveryMethod(selectedDeliveryMethod),
           orderNote: "Null",
           couponCode: appliedCoupon?.code,
           couponId: appliedCoupon?.id,
+          deliveryFee,
         });
 
         if (!initResult.success || !initResult.authorization_url || !initResult.reference) {
@@ -157,7 +208,16 @@ export default function CheckoutScreen() {
         notifySuccess("Continue payment", "Complete payment in Paystack, then tap Verify Payment.");
         return;
       }
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to continue checkout.");
+        return;
+      }
+      const errorMessage = getApiErrorMessage(error, "We couldn't create your order right now.");
+      if (isInsufficientWalletBalanceMessage(errorMessage)) {
+        notifyError("Insufficient balance", "Fund your wallet and try again.");
+        return;
+      }
       notifyError("Checkout failed", "We couldn't create your order right now.");
     } finally {
       setIsSubmitting(false);
@@ -184,7 +244,11 @@ export default function CheckoutScreen() {
           items: String(cartSnapshot?.totalItems ?? 0),
         },
       });
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to verify this payment.");
+        return;
+      }
       notifyError("Verification failed", "Could not verify Paystack payment.");
     } finally {
       setIsVerifyingPaystack(false);
@@ -219,7 +283,11 @@ export default function CheckoutScreen() {
       });
       setCouponInput("");
       notifySuccess("Coupon added", `${selected.coupon_code} added to checkout.`);
-    } catch {
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        promptLoginRequired(router, "Please sign in to apply coupons.");
+        return;
+      }
       notifyError("Apply failed", "Could not apply coupon right now.");
     } finally {
       setIsApplyingCoupon(false);
@@ -236,7 +304,9 @@ export default function CheckoutScreen() {
           <BackIcon />
         </Pressable>
         <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Check out</Text>
-        <BellDarkIcon />
+        <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+          <BellDarkIcon />
+        </Pressable>
       </View>
 
       <View className="px-5">
@@ -249,7 +319,7 @@ export default function CheckoutScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        className="px-4"
+        className="px-3"
         keyboardShouldPersistTaps="always"
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
@@ -265,16 +335,30 @@ export default function CheckoutScreen() {
       >
         <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Order Review</Text>
 
-        <View className="mt-2 flex-row items-center px-3 py-2" style={{ backgroundColor: colors.elevated }}>
-          <View className="h-[78px] w-[92px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
-            {firstCartItem?.product_image ? (
-              <CachedImage uri={resolveMediaUrl(firstCartItem.product_image)!} className="h-full w-full" />
-            ) : null}
-          </View>
-          <View className="ml-2 flex-1">
-            <Text className="text-[16px]" style={{ color: colors.text }}>{firstCartItem?.product_name ?? "Cart item"}</Text>
-            <Text className="mt-2 text-[24px]" style={{ color: colors.text }}>{formatMoney(firstCartItem?.product_price)}</Text>
-          </View>
+        <View
+          className="mt-2 px-2 overflow-hidden rounded-[12px] border"
+          style={{ borderColor: colors.border, backgroundColor: colors.card, minHeight: 140, maxHeight: 320 }}
+        >
+          <ScrollView
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={{ paddingVertical: 6 }}
+          >
+            {(cartSnapshot?.items ?? []).map((item) => (
+              <View key={item.id} className="flex-row items-center py-2" style={{ backgroundColor: colors.card, borderColor: colors.border, borderBottomWidth: 1 }}>
+                <View className="h-[74px] w-[92px] overflow-hidden" >
+                  {item.product_image ? (
+                    <ProductCardImage uri={resolveMediaUrl(item.product_image)!} className="h-full w-full" />
+                  ) : null}
+                </View>
+                <View className="ml-2 flex-1">
+                  <Text className="text-[14px]" style={{ color: colors.text }}>{item.product_name ?? "Cart item"}</Text>
+                  <Text className="mt-1 text-[11px]" style={{ color: colors.textMuted }}>Qty: {item.qty ?? 1}</Text>
+                  <Text className="mt-1 text-[16px]" style={{ color: colors.text }}>{formatMoney(item.product_price)}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
         </View>
 
         <View className="mt-5 flex-row items-center justify-between">
@@ -283,7 +367,7 @@ export default function CheckoutScreen() {
             <Text className="text-[13px] underline" style={{ color: colors.text }}>Edit</Text>
           </Pressable>
         </View>
-        <View className="mt-2 px-3 py-3 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+        <View className="mt-2 rounded-[12px] border px-3 py-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <Text className="text-[16px]" style={{ color: colors.text }}>
             {[selectedAddress?.first_name, selectedAddress?.last_name].filter(Boolean).join(" ").trim() || "Selected address"}
           </Text>
@@ -293,6 +377,43 @@ export default function CheckoutScreen() {
               .join(", ")}
           </Text>
         </View>
+
+        <View className="mt-5 flex-row items-center justify-between">
+          <Text className="text-[16px] font-medium" style={{ color: colors.text }}>Delivery method</Text>
+          <Text className="text-[13px] text-primary">Kwikpik only</Text>
+        </View>
+        <View className="mt-2 gap-2 rounded-[12px] border px-3 py-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          {deliveryMethods.map((method) => {
+            const active = method === selectedDeliveryMethod;
+            const isDisabled = method === "Pick Up Station";
+            return (
+              <Pressable
+                key={method}
+                onPress={() => !isDisabled && setSelectedDeliveryMethod(method)}
+                disabled={isDisabled}
+                className="flex-row items-center justify-between rounded-[12px] px-3 py-3"
+                style={{
+                  borderWidth: 1,
+                  borderColor: active ? colors.primary : colors.border,
+                  backgroundColor: isDisabled ? colors.elevated : colors.card,
+                }}
+              >
+                <View className="flex-1 pr-2">
+                  <Text className="text-[15px]" style={{ color: colors.text }}>{method}</Text>
+                  <Text className="text-[12px]" style={{ color: colors.textMuted }}>
+                    {method === "Kwikpik delivery"
+                      ? "Kwikpik delivery to your address."
+                      : "Unavailable — only Kwikpik delivery is available right now."}
+                  </Text>
+                </View>
+                <View className="flex h-5 w-5 items-center justify-center rounded-full border-2" style={{ borderColor: active ? colors.primary : colors.border }}>
+                  {active ? <View className="h-2.5 w-2.5 rounded-full bg-primary" /> : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <View className="mt-2 flex-row items-center gap-2">
           <View className="flex-1 rounded-xl border px-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
             <TextInput
@@ -324,7 +445,7 @@ export default function CheckoutScreen() {
             <Text className="text-[13px] underline" style={{ color: colors.text }}>Edit</Text>
           </Pressable>
         </View>
-        <View className="mt-2 flex-row items-center gap-3 px-3 py-4 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+        <View className="mt-2 flex-row items-center gap-3 rounded-[12px] border px-3 py-3.5" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <CardIcon />
           <Text className="text-[16px]" style={{ color: colors.text }}>{selectedPaymentMethod.replaceAll("_", " ")}</Text>
         </View>
@@ -337,7 +458,7 @@ export default function CheckoutScreen() {
             </Text>
           </Pressable>
         </View>
-        <View className="mt-2 px-3 py-3 shadow-sm" style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+        <View className="mt-2 rounded-[12px] border px-3 py-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           {appliedCoupon ? (
             <>
               <Text className="text-[15px] font-medium" style={{ color: colors.text }}>Selected coupon: {appliedCoupon.code}</Text>
@@ -365,7 +486,9 @@ export default function CheckoutScreen() {
             </View>
             <View className="flex-row items-center justify-between">
               <Text className="text-[16px]" style={{ color: colors.text }}>Delivery Charges</Text>
-              <Text className="text-[16px]" style={{ color: colors.text }}>{formatMoney(0)}</Text>
+              <Text className="text-[16px]" style={{ color: colors.text }}>
+                {isLoadingDeliveryFee ? "Loading..." : formatMoney(deliveryFee ?? 0)}
+              </Text>
             </View>
           </View>
 
@@ -399,7 +522,6 @@ export default function CheckoutScreen() {
     </KeyboardAvoidingView>
   );
 }
-
 
 
 

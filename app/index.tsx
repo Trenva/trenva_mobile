@@ -66,7 +66,7 @@ export default function SplashScreen() {
           router.replace("/(tabs)");
           return;
         }
-        router.replace("/(auth)/onboarding");
+        router.replace("/(tabs)");
       })();
     }, 3100);
 

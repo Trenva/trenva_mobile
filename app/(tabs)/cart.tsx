@@ -20,6 +20,7 @@ import {
 } from "../../lib/api/shop";
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 
 type CartTotal = {
   total_items: number;
@@ -53,8 +54,7 @@ export default function CartScreen() {
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
-        notifyError("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
+        promptLoginRequired(router, "Please sign in to view your cart.");
         return;
       }
 
@@ -145,7 +145,9 @@ export default function CartScreen() {
               <Pressable onPress={() => router.push("/search")}>
                 <SearchGrayIcon />
               </Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
 
@@ -204,7 +206,7 @@ export default function CartScreen() {
           <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }}>
           <Pressable onPress={() => router.push("/address")} className="rounded-full bg-primary py-4" android_ripple={{ color: "#e08800" }}>
             <Text className="text-center text-base font-bold text-white">
-              {`Make Payment (${formatMoney(cartTotal.total_price)})`}
+              Proceed to Checkout ({cartTotal.total_items} {cartTotal.total_items === 1 ? "item" : "items"})
             </Text>
           </Pressable>
           </View>

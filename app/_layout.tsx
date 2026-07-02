@@ -16,9 +16,8 @@ import {
 import { AppToast } from "../components/ui/app-toast";
 import { getAccessToken } from "../lib/auth/tokens";
 import { AppThemeProvider, useAppTheme } from "../lib/theme/theme-provider";
+import { initPushNotificationLifecycleHandlers, registerDeviceForPushNotifications } from "../lib/notifications/push";
 
-// Work around Android 7 native-stack + RefreshControl back-navigation crash.
-// Keep native screens enabled for newer Android versions.
 if (Platform.OS === "android" && Number(Platform.Version) <= 25) {
   enableScreens(false);
 }
@@ -41,18 +40,27 @@ export default function RootLayout() {
       const token = await getAccessToken();
       if (!mounted) return;
 
+      // Never interfere with the auth-callback screen — it handles its own logic
+      const isCallbackScreen = segments.some((s) => s === "auth-callback");
+      if (isCallbackScreen) {
+        setIsCheckingAuth(false);
+        return;
+      }
+
       const topLevel = segments[0] ?? "";
       const isAuthGroup = topLevel === "(auth)";
       const isProtectedGroup =
-        topLevel === "(tabs)" ||
         topLevel === "(account)" ||
-        topLevel === "(checkout-flow)" ||
-        topLevel === "(support)";
+        topLevel === "(checkout-flow)";
 
       if (!token && isProtectedGroup) {
         router.replace("/(auth)/login");
       } else if (token && isAuthGroup) {
         router.replace("/(tabs)");
+      }
+
+      if (token) {
+        void registerDeviceForPushNotifications();
       }
 
       setIsCheckingAuth(false);
@@ -79,6 +87,14 @@ export default function RootLayout() {
 
 function LayoutContent() {
   const { mode } = useAppTheme();
+  const router = useRouter();
+
+  useEffect(() => {
+    const dispose = initPushNotificationLifecycleHandlers(() => {
+      router.push("/notifications");
+    });
+    return dispose;
+  }, [router]);
 
   return (
     <>

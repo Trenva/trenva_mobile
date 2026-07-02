@@ -10,6 +10,7 @@ import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { notifyError, notifyInfo, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
+import { promptLoginRequired } from "../../lib/ui/login-required";
 
 function EyeIcon({ color }: { color: string }) {
   return (
@@ -63,10 +64,28 @@ export default function ChangePasswordScreen() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const currentTrim = currentPassword.trim();
+  const newTrim = newPassword.trim();
+  const confirmTrim = confirmNewPassword.trim();
+  const hasAllFields = Boolean(currentTrim && newTrim && confirmTrim);
+  const meetsMinLength = newTrim.length >= 8;
+  const matchesConfirm = newTrim.length > 0 && newTrim === confirmTrim;
+  const differsFromCurrent = Boolean(newTrim && currentTrim && newTrim !== currentTrim);
+  const canSubmit = hasAllFields && meetsMinLength && matchesConfirm && differsFromCurrent && !isSubmitting;
 
   async function handleSave() {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
       notifyError("Missing fields", "Please fill all password fields.");
+      return;
+    }
+
+    if (newPassword.trim().length < 8) {
+      notifyError("Weak password", "New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword.trim() === currentPassword.trim()) {
+      notifyError("No change", "New password must be different from current password.");
       return;
     }
 
@@ -87,8 +106,7 @@ export default function ChangePasswordScreen() {
     } catch (error) {
       if (isUnauthorizedError(error)) {
         await clearAuthTokens();
-        notifyInfo("Session expired", "Please log in again.");
-        router.replace("/(auth)/login");
+        promptLoginRequired(router, "Please sign in to change your password.");
         return;
       }
       notifyError("Change password failed", getApiErrorMessage(error, "Unable to change password right now."));
@@ -139,12 +157,27 @@ export default function ChangePasswordScreen() {
           />
         </View>
 
+        <View className="mt-1 rounded-xl border px-3 py-3" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <Text className="text-[12px]" style={{ color: colors.textMuted }}>
+            Use Forgot Password on the login screen if you can't remember your current password.
+          </Text>
+          <Text className="mt-2 text-[12px]" style={{ color: meetsMinLength ? colors.success : colors.textMuted }}>
+            • New password must be at least 8 characters
+          </Text>
+          <Text className="mt-1 text-[12px]" style={{ color: differsFromCurrent ? colors.success : colors.textMuted }}>
+            • New password must be different from current password
+          </Text>
+          <Text className="mt-1 text-[12px]" style={{ color: matchesConfirm ? colors.success : colors.textMuted }}>
+            • Confirm password must match
+          </Text>
+        </View>
+
         <View className="mt-5">
           <Pressable
             onPress={handleSave}
-            disabled={isSubmitting}
+            disabled={!canSubmit}
             className="rounded-full py-3.5"
-            style={{ backgroundColor: isSubmitting ? colors.border : colors.primary }}
+            style={{ backgroundColor: canSubmit ? colors.primary : colors.border }}
           >
             <Text className="text-center text-[16px] text-white">{isSubmitting ? "Saving..." : "Save"}</Text>
           </Pressable>

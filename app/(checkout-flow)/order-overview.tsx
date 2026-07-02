@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon, TabIcon } from "../../components/ui/home-ui";
-import { CachedImage, prefetchImageUris } from "../../components/ui/cached-image";
+import { ProductCardImage, prefetchImageUris } from "../../components/ui/cached-image";
 import { type ApiProduct, formatMoney, getFeaturedProductsPage, getOrders, resolveProductCardImageUrl } from "../../lib/api/shop";
 import { useCheckoutStore } from "../../store/checkout-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
@@ -42,7 +42,7 @@ function RecommendationCard({
       style={{ backgroundColor: colors.card }}
     >
       <View className="relative h-[110px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
-        {imageUrl ? <CachedImage uri={imageUrl} className="h-full w-full" /> : null}
+        {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         <View className="absolute right-3 top-3">
           <HeartOutlineIcon color={colors.primary} size={20} />
         </View>
@@ -162,7 +162,9 @@ export default function OrderOverviewScreen() {
             <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
-            <BellDarkIcon />
+            <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+              <BellDarkIcon />
+            </Pressable>
           </View>
 
           <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Order Overview</Text>

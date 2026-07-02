@@ -150,10 +150,40 @@ export type ApiAddress = {
   delete?: boolean;
 };
 
+export type ApiAddressSuggestionResponse = {
+  suggestions?: string[];
+  error?: string;
+};
+
+export type ApiCityOption = {
+  id: number | string;
+  city_name: string;
+};
+
+export type ApiDeliveryFeeResponse = {
+  success: boolean;
+  delivery_fee?: number;
+  error?: string;
+};
+
+export type ApiKwikpikTrackingItem = {
+  tracking_id?: string | null;
+  live_status?: string | null;
+  status?: string | null;
+  rider_name?: string | null;
+  rider_phone?: string | null;
+  proof_of_delivery?: string | null;
+  success?: boolean;
+  error?: string | null;
+};
+
 export type ApiOrder = {
   oid: string;
   id?: number;
   tracking_id?: string | null;
+  kwikpik_tracking_id?: string | null;
+  kwikpik_tracking_data?: Record<string, ApiKwikpikTrackingItem> | null;
+  kwikpik_tracking?: ApiKwikpikTrackingItem | null;
   user?: number;
   first_name?: string | null;
   last_name?: string | null;
@@ -175,6 +205,16 @@ export type ApiOrder = {
   session_token?: string | null;
   items?: Array<{
     id?: number;
+    pid?: string;
+    product?: number | string;
+    product_ref?: number | string;
+    product_details?: {
+      id?: number;
+      pid?: string;
+      title?: string;
+      image?: string | null;
+      price?: string | number | null;
+    };
     item?: string;
     product_name?: string;
     image?: string | null;
@@ -194,6 +234,9 @@ export type ApiWallet = {
   balance?: string | number | null;
   user_email?: string;
   user_name?: string;
+  account_name?: string;
+  account_number?: string | null;
+  bank_name?: string | null;
 };
 
 export type ApiTransaction = {
@@ -216,6 +259,7 @@ type MobilePaystackInitPayload = {
   callbackUrl?: string;
   couponCode?: string;
   couponId?: number;
+  deliveryFee?: number | null;
 };
 
 type MobilePaystackInitResponse = {
@@ -240,6 +284,7 @@ type MobileWalletCheckoutPayload = {
   orderNote?: string;
   couponCode?: string;
   couponId?: number;
+  deliveryFee?: number | null;
 };
 
 type MobileWalletCheckoutResponse = {
@@ -440,11 +485,13 @@ function toThumbKey(value: string) {
 
 export function resolveMediaUrl(path?: string | null) {
   if (!path) return undefined;
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return normalizeUrlForImage(path);
+  const normalizedPath = String(path).replace(/\\/g, "/").trim();
+  if (!normalizedPath) return undefined;
+  if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
+    return normalizeUrlForImage(normalizedPath);
   }
   const origin = getApiOrigin();
-  const absolute = path.startsWith("/") ? `${origin}${path}` : `${origin}/${path}`;
+  const absolute = normalizedPath.startsWith("/") ? `${origin}${normalizedPath}` : `${origin}/${normalizedPath}`;
   return normalizeUrlForImage(absolute);
 }
 
@@ -536,6 +583,64 @@ export async function getPublishedProductsFiltered(params?: {
   if (typeof params?.inStock === "boolean") query.in_stock = String(params.inStock);
   if (params?.sort && params.sort !== "relevance") query.sort = params.sort;
   return fetchAllPages<ApiProduct>("/api/products/", query);
+}
+
+export async function getPublishedProductsFilteredPage(params?: {
+  categoryTitle?: string;
+  categoryCid?: string;
+  subcategoryTitle?: string;
+  levelTwoTitle?: string;
+  vendorName?: string;
+  query?: string;
+  ordering?: string;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  minRating?: number | null;
+  color?: string;
+  inStock?: boolean;
+  sort?: "relevance" | "top_sales" | "most_recent" | "popular" | "price_asc" | "price_desc";
+  page?: number;
+  nextUrl?: string | null;
+}) {
+  if (params?.nextUrl) {
+    const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>(params.nextUrl);
+    const page = unwrapPage(response.data);
+    return { ...page, results: filterPublishedProducts(page.results) };
+  }
+
+  const query: Record<string, string | number> = {
+    product_status: "published",
+    page: params?.page ?? 1,
+  };
+  if (params?.categoryTitle) query.category_title = params.categoryTitle;
+  if (params?.categoryCid) query.category_cid = params.categoryCid;
+  if (params?.subcategoryTitle) query.subcategory_title = params.subcategoryTitle;
+  if (params?.levelTwoTitle) query.leveltwo_title = params.levelTwoTitle;
+  if (params?.vendorName) query.vendor_name = params.vendorName;
+  if (params?.query) query.q = params.query;
+  if (params?.ordering) query.ordering = params.ordering;
+  if (typeof params?.minPrice === "number") query.min_price = String(params.minPrice);
+  if (typeof params?.maxPrice === "number") query.max_price = String(params.maxPrice);
+  if (typeof params?.minRating === "number") query.min_rating = String(params.minRating);
+  if (params?.color) query.color = params.color;
+  if (typeof params?.inStock === "boolean") query.in_stock = String(params.inStock);
+  if (params?.sort && params.sort !== "relevance") query.sort = params.sort;
+
+  const cacheKey = `public:products:filtered:page1:${JSON.stringify(query)}`;
+  if ((params?.page ?? 1) === 1) {
+    const cached = getCached<ApiPage<ApiProduct>>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const response = await apiClient.get<PaginatedResponse<ApiProduct> | ApiProduct[]>("/api/products/", {
+    params: query,
+  });
+  const page = unwrapPage(response.data);
+  const normalized = { ...page, results: filterPublishedProducts(page.results) };
+  if ((params?.page ?? 1) === 1) {
+    setCached(cacheKey, normalized, 30_000);
+  }
+  return normalized;
 }
 
 export async function getRelatedProductsById(productId: number, limit = 12) {
@@ -875,6 +980,32 @@ export async function createAddress(payload: Partial<ApiAddress>) {
   return response.data;
 }
 
+export async function getAddressSuggestions(query: string) {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const response = await apiClient.get<ApiAddressSuggestionResponse>("/api/address-autocomplete/", {
+    params: { q, limit: 12 },
+  });
+  return Array.isArray(response.data?.suggestions) ? response.data.suggestions : [];
+}
+
+export async function getCitiesByState(state: string) {
+  const response = await apiClient.get<{ cities?: ApiCityOption[] }>("/api/get-cities-json/", {
+    params: { state: state.trim() },
+  });
+  return Array.isArray(response.data?.cities) ? response.data.cities : [];
+}
+
+export async function getDeliveryFeeByAddress(state: string, city: string) {
+  const response = await apiClient.get<ApiDeliveryFeeResponse>("/api/get-delivery-fee/", {
+    params: {
+      state: state.trim(),
+      city: city.trim(),
+    },
+  });
+  return response.data;
+}
+
 export async function setDefaultAddress(addressId: number) {
   const response = await apiClient.post<{ success?: boolean; message?: string }>(
     `/api/addresses/${addressId}/set_default/`,
@@ -976,6 +1107,7 @@ export async function mobilePaystackInit(payload: MobilePaystackInitPayload) {
     callback_url: payload.callbackUrl,
     coupon_code: payload.couponCode?.trim() || "",
     coupon_id: payload.couponId ?? null,
+    delivery_fee: payload.deliveryFee ?? null,
   });
   return response.data;
 }
@@ -994,6 +1126,7 @@ export async function mobileWalletCheckout(payload: MobileWalletCheckoutPayload)
     order_note: payload.orderNote ?? "Null",
     coupon_code: payload.couponCode?.trim() || "",
     coupon_id: payload.couponId ?? null,
+    delivery_fee: payload.deliveryFee ?? null,
   });
   return response.data;
 }

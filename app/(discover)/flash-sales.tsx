@@ -9,11 +9,12 @@ import { applyProductFilters } from "../../lib/search/product-filters";
 import { formatMoney, getFlashSaleProductsPage, isExplicitlyOutOfStock, resolveProductCardImageUrl, type ApiFlashSaleProduct } from "../../lib/api/shop";
 import { useProductFilterStore } from "../../store/product-filter-store";
 import { notifyError } from "../../lib/ui/notify";
-import { CachedImage } from "../../components/ui/cached-image";
+import { ProductCardImage } from "../../components/ui/cached-image";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { ProductGridSkeleton } from "../../components/ui/loading-skeleton";
+import { getResponsiveProductGrid } from "../../lib/ui/responsive-product-grid";
 
-function FlashSaleCard({ item, onPress }: { item: ApiFlashSaleProduct; onPress: () => void }) {
+function FlashSaleCard({ item, onPress, width, imageHeight }: { item: ApiFlashSaleProduct; onPress: () => void; width: number; imageHeight: number }) {
   const { colors } = useAppTheme();
   const details = item.product_details;
   const priceValue = item.flash_sale_price ?? item.effective_price ?? details?.price ?? 0;
@@ -24,11 +25,11 @@ function FlashSaleCard({ item, onPress }: { item: ApiFlashSaleProduct; onPress: 
   return (
     <Pressable
       onPress={onPress}
-      className="mb-4 w-[48%] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mb-4 overflow-hidden rounded-[6px] shadow-sm"
+      style={{ backgroundColor: colors.card, width }}
     >
-      <View className="relative h-[112px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
-        {details.image ? <CachedImage uri={resolveProductCardImageUrl(details.image)!} className="h-full w-full" /> : null}
+      <View className="relative overflow-hidden" style={{ backgroundColor: colors.elevated, height: imageHeight }}>
+        {details.image ? <ProductCardImage uri={resolveProductCardImageUrl(details.image)!} className="h-full w-full" /> : null}
         {isOutOfStock ? (
           <View className="absolute z-20 rounded-full bg-black/65 px-2 py-0.5" style={{ left: 8, bottom: 8 }}>
             <Text className="text-[9px] font-semibold text-white">Out of stock</Text>
@@ -54,6 +55,7 @@ export default function FlashSalesScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const contentMaxWidth = width >= 900 ? 980 : undefined;
+  const grid = getResponsiveProductGrid({ width });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -155,7 +157,9 @@ export default function FlashSalesScreen() {
               <Pressable onPress={() => router.push("/search")}>
                 <SearchGrayIcon />
               </Pressable>
-              <BellDarkIcon />
+              <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
+                <BellDarkIcon />
+              </Pressable>
             </View>
           </View>
         </View>
@@ -181,11 +185,13 @@ export default function FlashSalesScreen() {
               </Pressable>
             </View>
           ) : (
-            <View className="flex-row flex-wrap justify-between">
+            <View className="flex-row flex-wrap justify-center gap-3">
               {filteredItems.map((item) => (
                 <FlashSaleCard
                   key={item.id}
                   item={item}
+                  width={grid.cardWidth}
+                  imageHeight={grid.imageHeight}
                   onPress={() =>
                     router.push({
                       pathname: "/product/[slug]",
