@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { CloseOrangeIcon, SearchOrangeIcon } from "../../components/ui/general-ui";
 import { useProductFilterStore } from "../../store/product-filter-store";
+import { useRecentSearchesStore } from "../../store/recent-searches-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
 export default function SearchScreen() {
@@ -13,10 +14,15 @@ export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState("");
   const setFilters = useProductFilterStore((state) => state.setFilters);
+  const recentSearches = useRecentSearchesStore((state) => state.recentSearches);
+  const addRecentSearch = useRecentSearchesStore((state) => state.addRecentSearch);
+  const removeRecentSearch = useRecentSearchesStore((state) => state.removeRecentSearch);
+  const clearRecentSearches = useRecentSearchesStore((state) => state.clearRecentSearches);
   const quickSearches = ["Sneakers", "Perfume", "T-shirt", "Headphones", "Watches", "Skincare"];
   const popularCategories = ["Fashion", "Beauty", "Electronics", "Home", "Groceries", "Accessories"];
 
   function goToResults(query: string) {
+    addRecentSearch(query);
     setFilters({
       query,
       category: "",
@@ -64,6 +70,33 @@ export default function SearchScreen() {
             </Text>
           </View>
 
+          {recentSearches.length > 0 ? (
+            <View className="mt-6">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-[15px] font-semibold" style={{ color: colors.text }}>Recent Searches</Text>
+                <Pressable onPress={clearRecentSearches} hitSlop={8}>
+                  <Text className="text-[13px] font-medium text-primary">Clear all</Text>
+                </Pressable>
+              </View>
+              <View className="mt-2 flex-row flex-wrap">
+                {recentSearches.map((item) => (
+                  <View
+                    key={item}
+                    className="mb-2 mr-2 flex-row items-center rounded-full border pl-3 pr-2 py-2"
+                    style={{ borderColor: colors.border, backgroundColor: colors.card }}
+                  >
+                    <Pressable onPress={() => goToResults(item)}>
+                      <Text className="text-[13px]" style={{ color: colors.text }}>{item}</Text>
+                    </Pressable>
+                    <Pressable onPress={() => removeRecentSearch(item)} hitSlop={8} className="ml-2">
+                      <Text className="text-[15px] font-medium" style={{ color: colors.textMuted }}>×</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View className="mt-6">
             <Text className="text-[15px] font-semibold" style={{ color: colors.text }}>Quick Searches</Text>
             <View className="mt-2 flex-row flex-wrap">
@@ -99,4 +132,3 @@ export default function SearchScreen() {
     </KeyboardAvoidingView>
   );
 }
-
