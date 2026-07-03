@@ -98,12 +98,12 @@ export function PriceDetails({ items, subtotal, discount, delivery, total }: Pri
 
       <View className="mb-3 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Discount</Text>
-        <Text className="text-xs font-semibold  bg-primary rounded-xl px-1 py-0.5 text-white">Discount can be added at checkout</Text>
+        <Text className="text-[11px] font-semibold  bg-primary rounded-xl px-1 py-0.5 text-white">Discount can be added at checkout</Text>
       </View>
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-sm" style={{ color: colors.textMuted }}>Delivery Charges</Text>
-        <Text className="text-xs font-semibold bg-primary rounded-xl px-1 py-0.5 text-white">Delivery fee will be added at checkout</Text>
+        <Text className="text-[11px] font-semibold bg-primary rounded-xl px-1 py-0.5 text-white">Delivery fee will be added at checkout</Text>
       </View>
 
       <View className="mb-4 h-px" style={{ backgroundColor: colors.border }} />

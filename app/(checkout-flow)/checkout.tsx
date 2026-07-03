@@ -402,7 +402,7 @@ export default function CheckoutScreen() {
                   <Text className="text-[15px]" style={{ color: colors.text }}>{method}</Text>
                   <Text className="text-[12px]" style={{ color: colors.textMuted }}>
                     {method === "Kwikpik delivery"
-                      ? "Kwikpik delivery to your address."
+                      ? "Kwikpik delivery to your door step."
                       : "Unavailable — only Kwikpik delivery is available right now."}
                   </Text>
                 </View>

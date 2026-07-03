@@ -1,13 +1,21 @@
-// components/TawkChatBubble.web.tsx
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
-const PROPERTY_ID = '67c06913de20e6190b17114d';
-const WIDGET_ID = '1il3pktdh';
+const PROPERTY_ID = "67c06913de20e6190b17114d";
+const WIDGET_ID = "1il3pktdh";
+const SCRIPT_ID = "trenva-tawk-script";
 
-// Extend the global Window interface to fix TypeScript errors safely
 declare global {
   interface Window {
-    Tawk_API?: any;
+    Tawk_API?: {
+      onLoad?: () => void;
+      setAttributes?: (
+        attributes: { name?: string; email?: string },
+        callback?: (error?: unknown) => void,
+      ) => void;
+      maximize?: () => void;
+      minimize?: () => void;
+      shutdown?: () => void;
+    };
     Tawk_LoadStart?: Date;
   }
 }
@@ -15,54 +23,60 @@ declare global {
 interface TawkChatBubbleProps {
   userName?: string;
   userEmail?: string;
+  bottomOffset?: number;
 }
 
 export default function TawkChatBubble({ userName, userEmail }: TawkChatBubbleProps) {
   useEffect(() => {
-    // 1. Initialize global objects IMMEDIATELY before script execution
     window.Tawk_API = window.Tawk_API || {};
-    window.Tawk_LoadStart = new Date();
+    window.Tawk_LoadStart = window.Tawk_LoadStart || new Date();
 
-    // 2. Define the onLoad callback IMMEDIATELY so tawk.to catches it on startup
-    if (userName || userEmail) {
-      window.Tawk_API.onLoad = function () {
-        window.Tawk_API.setAttributes({
-          ...(userName && { name: userName }),
-          ...(userEmail && { email: userEmail }),
-        }, (error: any) => {
-          if (error) console.error('Tawk error:', error);
-        });
-      };
+    if (!document.getElementById(SCRIPT_ID)) {
+      const script = document.createElement("script");
+      script.id = SCRIPT_ID;
+      script.async = true;
+      script.src = `https://embed.tawk.to/${PROPERTY_ID}/${WIDGET_ID}`;
+      script.charset = "UTF-8";
+      script.setAttribute("crossorigin", "*");
+      document.head.appendChild(script);
     }
 
-    // 3. Inject the script element
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://embed.tawk.to/${PROPERTY_ID}/${WIDGET_ID}`;
-    script.charset = 'UTF-8';
-    script.setAttribute('crossorigin', '*');
-    document.head.appendChild(script);
-
-    // 4. Robust Cleanup on Component Unmount
     return () => {
-      if (document.head.contains(script)) {
-        document.head.removeChild(script);
+      try {
+        window.Tawk_API?.shutdown?.();
+      } catch {
+        document.querySelectorAll('[id^="tawk"]').forEach((element) => element.remove());
       }
-      // Completely wipe the widget container from the DOM if it exists
-      if (window.Tawk_API && typeof window.Tawk_API.minimize === 'function') {
-        try {
-          window.Tawk_API.shutdown(); // Removes tawk iframes from DOM cleanly
-        } catch (e) {
-          // Fallback if shutdown method fails or isn't fully loaded
-          const tawkElements = document.querySelectorAll('[id^="tawk"]');
-          tawkElements.forEach(el => el.remove());
-        }
-      }
-      // Clear globals to prevent state leaking on re-mounts
+      document.getElementById(SCRIPT_ID)?.remove();
       delete window.Tawk_API;
       delete window.Tawk_LoadStart;
     };
-  }, [userName, userEmail]); // Re-run if user context switches
+  }, []);
+
+  useEffect(() => {
+    const attributes = {
+      ...(userName ? { name: userName } : {}),
+      ...(userEmail ? { email: userEmail } : {}),
+    };
+
+    if (!attributes.name && !attributes.email) return;
+
+    function setAttributesWhenReady() {
+      if (window.Tawk_API?.setAttributes) {
+        window.Tawk_API.setAttributes(attributes, (error) => {
+          if (error) console.error("Tawk attribute error:", error);
+        });
+        return;
+      }
+
+      window.setTimeout(setAttributesWhenReady, 300);
+    }
+
+    if (window.Tawk_API) {
+      window.Tawk_API.onLoad = setAttributesWhenReady;
+    }
+    setAttributesWhenReady();
+  }, [userName, userEmail]);
 
   return null;
 }

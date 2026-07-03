@@ -103,6 +103,7 @@ export function CategoryTile({
   iconSize?: number;
   fontSize?: number;
 }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -116,7 +117,7 @@ export function CategoryTile({
       ) : (
         <CategoryArtwork size={iconSize} />
       )}
-      <Text className="mt-2 text-center font-medium leading-[16px] text-primary" style={{ fontSize }}>
+      <Text className="mt-2 text-center font-medium leading-[16px] text-primary" style={{ fontSize, color: colors.text }}>
         {label}
       </Text>
     </Pressable>

@@ -1,6 +1,6 @@
 import "../global.css";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import { Stack } from "expo-router";
 import { useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -14,6 +14,8 @@ import {
   PlusJakartaSans_700Bold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { AppToast } from "../components/ui/app-toast";
+import TawkChatBubble from "../components/chat/TawkChatBubble.native";
+import { fetchProfile, type UserProfile } from "../lib/api/auth";
 import { getAccessToken } from "../lib/auth/tokens";
 import { AppThemeProvider, useAppTheme } from "../lib/theme/theme-provider";
 import { initPushNotificationLifecycleHandlers, registerDeviceForPushNotifications } from "../lib/notifications/push";
@@ -88,6 +90,10 @@ export default function RootLayout() {
 function LayoutContent() {
   const { mode } = useAppTheme();
   const router = useRouter();
+  const segments = useSegments();
+  const [chatUser, setChatUser] = useState<{ name?: string; email?: string }>({});
+  const showChatBubble = shouldShowChatBubble(segments);
+  const chatBottomOffset = segments[0] === "(tabs)" ? 82 : 24;
 
   useEffect(() => {
     const dispose = initPushNotificationLifecycleHandlers(() => {
@@ -96,11 +102,57 @@ function LayoutContent() {
     return dispose;
   }, [router]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadChatUser() {
+      const token = await getAccessToken();
+      if (!token) {
+        if (mounted) setChatUser({});
+        return;
+      }
+
+      try {
+        const profile = await fetchProfile();
+        if (!mounted) return;
+        setChatUser({
+          name: getProfileDisplayName(profile),
+          email: typeof profile.email === "string" ? profile.email : undefined,
+        });
+      } catch {
+        if (mounted) setChatUser({});
+      }
+    }
+
+    void loadChatUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
-    <>
+    <View className="flex-1">
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false }} />
       <AppToast />
-    </>
+      {showChatBubble ? (
+        <TawkChatBubble bottomOffset={chatBottomOffset} userName={chatUser.name} userEmail={chatUser.email} />
+      ) : null}
+    </View>
   );
+}
+
+function shouldShowChatBubble(segments: string[]) {
+  const topLevel = segments[0] ?? "";
+  if (topLevel === "(auth)" || topLevel === "(checkout-flow)") return false;
+  if (segments.some((segment) => segment === "auth-callback")) return false;
+  return true;
+}
+
+function getProfileDisplayName(profile: UserProfile) {
+  const firstName = typeof profile.first_name === "string" ? profile.first_name : "";
+  const lastName = typeof profile.last_name === "string" ? profile.last_name : "";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (fullName) return fullName;
+  return typeof profile.username === "string" ? profile.username : undefined;
 }

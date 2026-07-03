@@ -150,8 +150,24 @@ export type ApiAddress = {
   delete?: boolean;
 };
 
+export type ApiAddressSuggestion = {
+  description: string;
+  place_id: string;
+};
+
 export type ApiAddressSuggestionResponse = {
-  suggestions?: string[];
+  suggestions?: ApiAddressSuggestion[];
+  error?: string;
+};
+
+export type ApiPlaceDetailsResponse = {
+  success: boolean;
+  formatted_address?: string;
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  state?: string;
+  postal_code?: string;
   error?: string;
 };
 
@@ -980,13 +996,24 @@ export async function createAddress(payload: Partial<ApiAddress>) {
   return response.data;
 }
 
-export async function getAddressSuggestions(query: string) {
+export async function getAddressSuggestions(
+  query: string,
+  options?: { signal?: AbortSignal },
+) {
   const q = query.trim();
   if (q.length < 3) return [];
   const response = await apiClient.get<ApiAddressSuggestionResponse>("/api/address-autocomplete/", {
-    params: { q, limit: 12 },
+    params: { q },
+    signal: options?.signal,
   });
   return Array.isArray(response.data?.suggestions) ? response.data.suggestions : [];
+}
+
+export async function getPlaceDetails(placeId: string) {
+  const response = await apiClient.get<ApiPlaceDetailsResponse>("/api/place-details/", {
+    params: { place_id: placeId },
+  });
+  return response.data;
 }
 
 export async function getCitiesByState(state: string) {

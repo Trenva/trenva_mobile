@@ -3,7 +3,6 @@ import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Tex
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
-import TawkChatBubble from "../../components/chat/TawkChatBubble.native";
 import {
   BellIcon,
   CouponIcon,
@@ -683,7 +682,7 @@ export default function HomeScreen() {
         <View className="px-4">
           {sliders.length > 0 ? (
             <View
-              className="mb-8 overflow-hidden rounded-[10px]"
+              className="overflow-hidden rounded-[10px]"
               onLayout={(event) => {
                 const measuredWidth = event.nativeEvent.layout.width;
                 if (measuredWidth > 0 && measuredWidth !== heroWidth) {
@@ -707,7 +706,7 @@ export default function HomeScreen() {
                 }}
               >
                 {sliders.map((slider) => (
-                  <View key={`slider-${slider.id}`} className="h-[170px] overflow-hidden rounded-[10px]" style={{ width: heroWidth, backgroundColor: colors.elevated }}>
+                  <View key={`slider-${slider.id}`} className="h-[180px] overflow-hidden rounded-[10px]" style={{ width: heroWidth, backgroundColor: colors.elevated }}>
                     <CachedImage uri={resolveMediaUrl(slider.image)!} className="h-full w-full" />
                   </View>
                 ))}
@@ -925,10 +924,6 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
-      <TawkChatBubble
-        userName={name}
-        userEmail={email}
-      />
     </SafeAreaView>
   );
 }
