@@ -215,9 +215,13 @@ export function TabIcon({
   if (routeName === "index") {
     return (
       <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-        <Path
-          d="M4 10.6L12 4L20 10.6V20H14.4V14.2H9.6V20H4V10.6Z"
-          fill={color}
+        <Path 
+          d="M4 10.6L12 4L20 10.6V20H14.4V14.2H9.6V20H4V10.6Z" 
+          fill="none" 
+          stroke={color} 
+          strokeWidth={2} 
+          strokeLinejoin="round" 
+          strokeLinecap="round"
         />
       </Svg>
     );

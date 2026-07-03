@@ -40,15 +40,22 @@ const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
 function HomeIcon({ color }: { color: string }) {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Path d="M4 10.6L12 4L20 10.6V20H14.4V14.2H9.6V20H4V10.6Z" fill={color} />
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path 
+        d="M4 10.6L12 4L20 10.6V20H14.4V14.2H9.6V20H4V10.6Z" 
+        fill="none" 
+        stroke={color} 
+        strokeWidth={2} 
+        strokeLinejoin="round" 
+        strokeLinecap="round"
+      />
     </Svg>
   );
 }
 
 function CartDarkIcon({ color }: { color: string }) {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path d="M5 6H7L9.4 14.4H18L20 8.2H8.5" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
       <Circle cx={10} cy={18} r={1.5} fill={color} />
       <Circle cx={17} cy={18} r={1.5} fill={color} />
@@ -420,7 +427,7 @@ export default function ProductDetailsScreen() {
           <View className="flex-row items-center gap-2">
             <Pressable onPress={() => goBackOr(router)} hitSlop={ICON_HIT_SLOP}><ThemedBackIcon color={colors.text} /></Pressable>
           </View>
-          <View className="flex-row items-center gap-4">
+          <View className="flex-row items-center gap-7">
             <Pressable onPress={() => router.replace("/(tabs)")} hitSlop={ICON_HIT_SLOP}><HomeIcon color={colors.text} /></Pressable>
             <Pressable onPress={() => router.push("/search")} hitSlop={ICON_HIT_SLOP}><SearchGrayIcon /></Pressable>
             <Pressable onPress={() => router.push("/(tabs)/cart")} hitSlop={ICON_HIT_SLOP}><CartDarkIcon color={colors.text} /></Pressable>
