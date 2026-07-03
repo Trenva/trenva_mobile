@@ -54,6 +54,13 @@ function MethodIcon({ type }: { type: (typeof methods)[number]["type"] }) {
   );
 }
 
+function methodIdFromBackendValue(value: string): (typeof methods)[number]["id"] {
+  if (value === "flutterwave") return "flutterwave";
+  if (value === "wallet") return "wallet";
+  if (value === "cash_on_delivery") return "cod";
+  return "paystack";
+}
+
 function PaymentRow({
   label,
   type,
@@ -91,10 +98,17 @@ export default function PaymentsScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState("paystack");
+  const storedPaymentMethod = useCheckoutStore((state) => state.selectedPaymentMethod);
+  const setSelectedPaymentMethod = useCheckoutStore((state) => state.setSelectedPaymentMethod);
+  const [selected, setSelected] = useState(() => methodIdFromBackendValue(storedPaymentMethod));
   const [isLoadingWallet, setIsLoadingWallet] = useState(true);
   const [walletBalance, setWalletBalance] = useState<number>(0);
-  const setSelectedPaymentMethod = useCheckoutStore((state) => state.setSelectedPaymentMethod);
+
+  // Keep local selection in sync if the stored method changes elsewhere
+  // (e.g. rehydrated from storage after the screen has already mounted).
+  useEffect(() => {
+    setSelected(methodIdFromBackendValue(storedPaymentMethod));
+  }, [storedPaymentMethod]);
   
   useEffect(() => {
     let mounted = true;
@@ -197,4 +211,3 @@ export default function PaymentsScreen() {
     </View>
   );
 }
-
