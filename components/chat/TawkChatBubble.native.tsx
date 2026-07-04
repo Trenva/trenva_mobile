@@ -1,6 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
-  ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
-import { WebView } from "react-native-webview";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
 const PROPERTY_ID = "67c06913de20e6190b17114d";
@@ -43,39 +42,18 @@ function ChatIcon() {
 }
 
 export default function TawkChatBubble({ userName, userEmail, bottomOffset = 24 }: TawkChatBubbleProps) {
-  const { colors, mode } = useAppTheme();
+  const { colors } = useAppTheme();
   const [visible, setVisible] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const webViewRef = useRef<WebView>(null);
 
-  function getInjectedJavaScript() {
-    if (!userName && !userEmail) return "";
-
-    const attributes = JSON.stringify({
-      ...(userName ? { name: userName } : {}),
-      ...(userEmail ? { email: userEmail } : {}),
-    });
-
-    return `
-      (function() {
-        function setTawkAttributes() {
-          if (typeof Tawk_API !== 'undefined' && Tawk_API.setAttributes) {
-            Tawk_API.setAttributes(${attributes}, function(error) {});
-          } else {
-            setTimeout(setTawkAttributes, 200);
-          }
-        }
-        setTawkAttributes();
-      })();
-      true;
-    `;
+  async function openSupportChat() {
+    setVisible(false);
+    await Linking.openURL(DIRECT_CHAT_URL);
   }
 
   return (
     <>
       <Pressable
         onPress={() => {
-          setLoading(true);
           setVisible(true);
         }}
         className="h-14 w-14 items-center justify-center rounded-full bg-primary"
@@ -123,31 +101,30 @@ export default function TawkChatBubble({ userName, userEmail, bottomOffset = 24 
             </Pressable>
           </View>
 
-          {loading ? (
+          <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: colors.background }}>
             <View
-              className="items-center justify-center gap-3"
-              style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background, zIndex: 10 }]}
+              className="w-full max-w-sm rounded-2xl border p-6"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
-              <ActivityIndicator color={colors.primary} size="large" />
-              <Text className="text-sm" style={{ color: colors.textMuted }}>
-                Connecting to support...
+              <Text className="text-lg font-semibold" style={{ color: colors.text }}>
+                Need help?
               </Text>
+              <Text className="mt-2 text-sm leading-6" style={{ color: colors.textMuted }}>
+                Open the support chat in your browser so our team can help you with your order or account.
+              </Text>
+              <Pressable
+                className="mt-5 items-center justify-center rounded-xl px-4 py-3"
+                onPress={() => {
+                  void openSupportChat();
+                }}
+                style={{ backgroundColor: colors.primary }}
+              >
+                <Text className="font-semibold" style={{ color: "#FFFFFF" }}>
+                  Open support chat
+                </Text>
+              </Pressable>
             </View>
-          ) : null}
-
-          <WebView
-            ref={webViewRef}
-            className="flex-1"
-            domStorageEnabled
-            injectedJavaScript={getInjectedJavaScript()}
-            javaScriptEnabled
-            mixedContentMode="always"
-            onError={(event) => console.log("Tawk WebView error:", event.nativeEvent)}
-            onLoadEnd={() => setLoading(false)}
-            source={{ uri: DIRECT_CHAT_URL }}
-            style={{ backgroundColor: mode === "dark" ? "#111111" : "#FFFFFF" }}
-            thirdPartyCookiesEnabled
-          />
+          </View>
         </SafeAreaView>
       </Modal>
     </>

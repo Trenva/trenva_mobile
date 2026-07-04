@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Location from "expo-location";
 import { MapPin } from "lucide-react-native";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -169,6 +168,7 @@ export default function AddAddressScreen() {
   async function handleUseCurrentLocation() {
     setIsLoadingLocation(true);
     try {
+      const Location = await import("expo-location");
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         notifyError("Permission needed", "Location access is required to use this feature.");

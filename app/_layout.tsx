@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { Stack } from "expo-router";
 import { useRouter, useSegments } from "expo-router";
@@ -14,7 +14,7 @@ import {
   PlusJakartaSans_700Bold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { AppToast } from "../components/ui/app-toast";
-import TawkChatBubble from "../components/chat/TawkChatBubble.native";
+const TawkChatBubble = lazy(() => import("../components/chat/TawkChatBubble.native"));
 import { fetchProfile, type UserProfile } from "../lib/api/auth";
 import { getAccessToken } from "../lib/auth/tokens";
 import { AppThemeProvider, useAppTheme } from "../lib/theme/theme-provider";
@@ -136,7 +136,9 @@ function LayoutContent() {
       <Stack screenOptions={{ headerShown: false }} />
       <AppToast />
       {showChatBubble ? (
-        <TawkChatBubble bottomOffset={chatBottomOffset} userName={chatUser.name} userEmail={chatUser.email} />
+        <Suspense fallback={null}>
+          <TawkChatBubble bottomOffset={chatBottomOffset} userName={chatUser.name} userEmail={chatUser.email} />
+        </Suspense>
       ) : null}
     </View>
   );

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Location from "expo-location";
 import {
   BellIcon,
   CouponIcon,
@@ -501,6 +500,7 @@ export default function HomeScreen() {
 
     async function loadUserLocation() {
       try {
+        const Location = await import("expo-location");
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           if (mounted) setLocationLabel("Location permission denied");

@@ -34,6 +34,9 @@
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true,
+      "jsEngine": "hermes",
       "package": "com.trenva.trenva",
       "intentFilters": [
         {
