@@ -9,6 +9,7 @@ import { useAppTheme } from "../../lib/theme/theme-provider";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { promptLoginRequired } from "../../lib/ui/login-required";
+import { TransactionDetailsSheet } from "../../components/ui/transaction-details-sheet";
 
 const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
@@ -27,6 +28,7 @@ export default function TransactionsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<ApiTransaction | null>(null);
 
   async function loadTransactions() {
     try {
@@ -86,11 +88,15 @@ export default function TransactionsScreen() {
             <Text className="mt-6 text-[14px]" style={{ color: colors.textMuted }}>No wallet transactions yet.</Text>
           ) : null}
 
-          <View className="mt-4 gap-5">
+          <View className="mt-6 gap-5">
             {sortedTransactions.map((transaction) => {
               const amount = toTransactionAmount(transaction);
               return (
-                <View key={String(transaction.id)} className="flex-row items-center justify-between">
+                <Pressable
+                  key={String(transaction.id)}
+                  onPress={() => setSelectedTransaction(transaction)}
+                  className="flex-row items-center justify-between"
+                >
                   <View className="h-10 w-10 rounded-full" style={{ backgroundColor: colors.elevated }} />
                   <View className="ml-4 flex-1 pr-3">
                     <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>
@@ -101,12 +107,17 @@ export default function TransactionsScreen() {
                   <Text className="text-right text-[18px] font-medium" style={{ color: amount.positive ? colors.success : colors.error, minWidth: 96 }}>
                     {amount.text}
                   </Text>
-                </View>
+                </Pressable>
               );
             })}
           </View>
         </View>
       </ScrollView>
+      <TransactionDetailsSheet
+        transaction={selectedTransaction}
+        visible={!!selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+      />
     </View>
   );
 }

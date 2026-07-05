@@ -236,6 +236,7 @@ export type ApiOrder = {
     image?: string | null;
     qty?: number;
     product_color?: string | null;
+    vendor_name?: string | null;
     product_size?: string | null;
     price?: string | number | null;
     total?: string | number | null;

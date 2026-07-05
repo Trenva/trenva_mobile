@@ -166,7 +166,6 @@ export default function OrderDetailsScreen() {
                   kwikpikTrackingEntries.map(([vendorId, trackingInfo]) => (
                     <View key={vendorId} className="mt-4 rounded-2xl border p-3" style={{ borderColor: colors.border, backgroundColor: colors.background }}>
                       <Text className="text-[14px] font-semibold" style={{ color: colors.text }}>
-                        Vendor {vendorId}
                       </Text>
                       <View className="mt-3 flex-row items-center justify-between">
                         <Text className="text-[13px]" style={{ color: colors.textMuted }}>Tracking ID</Text>
@@ -287,6 +286,9 @@ export default function OrderDetailsScreen() {
                         </Text>
                         <Text className="mt-1 text-[15px] font-medium" style={{ color: colors.text }}>
                           {formatMoney(item.total ?? item.price)}
+                        </Text>
+                        <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>
+                          {item.vendor_name ? `Sold by ${item.vendor_name}` : "Sold by N/A"}
                         </Text>
                       </View>
                     </View>

@@ -148,13 +148,27 @@ export default function AddressScreen() {
               style={{ borderColor: colors.border }}
             >
               <View className="flex-row items-start justify-between">
-                <View className="flex-row gap-3">
+                <View className="flex-1 flex-row gap-3 pr-3">
                   <View className="pt-1">
                     <LocationPinDarkIcon />
                   </View>
-                  <View>
-                    <Text className="text-[16px] font-medium" style={{ color: colors.text }}>{title}</Text>
-                    <Text className="mt-0.5 text-[12px] leading-5" style={{ color: colors.textMuted }}>{line || "No address line available"}</Text>
+                  <View className="flex-1">
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      className="text-[16px] font-medium"
+                      style={{ color: colors.text }}
+                    >
+                      {title}
+                    </Text>
+                    <Text
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                      className="mt-0.5 text-[12px] leading-5"
+                      style={{ color: colors.textMuted }}
+                    >
+                      {line || "No address line available"}
+                    </Text>
                   </View>
                 </View>
 

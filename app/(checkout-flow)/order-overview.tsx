@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { BackIcon, BellDarkIcon } from "../../components/ui/general-ui";
 import { HeartOutlineIcon, TabIcon } from "../../components/ui/home-ui";
 import { ProductCardImage, prefetchImageUris } from "../../components/ui/cached-image";
@@ -11,15 +11,106 @@ import { type ApiProduct, formatMoney, getFeaturedProductsPage, getOrders, resol
 import { useCheckoutStore } from "../../store/checkout-store";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 
-function SuccessBadgeIcon() {
+function CheckIcon({ size = 28, color = "#fff" }: { size?: number; color?: string }) {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={9} stroke="#FF9F0A" strokeWidth={2} />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 13l4 4L19 7" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function StarIcon({ size = 10, color = "#FFB800" }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M10.8 6.8L8.6 10V15C8.6 16.2 9.6 17.2 10.8 17.2H15.5C16.7 17.2 17.7 16.2 17.7 15V10.5C17.7 9.3 16.7 8.3 15.5 8.3H13.3L13.8 7C14.3 5.7 13.6 4.6 12.6 4.5C11.8 4.4 11.2 5 10.8 6.8Z"
-        fill="#FF9F0A"
+        d="M12 2.5l2.9 6.1 6.6.7-4.9 4.5 1.3 6.6L12 17l-5.9 3.4 1.3-6.6-4.9-4.5 6.6-.7L12 2.5z"
+        fill={color}
       />
     </Svg>
+  );
+}
+
+function BagIcon({ size = 14, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 8h12l-1 12H7L6 8z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Path d="M9 8V6a3 3 0 016 0v2" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function TruckIcon({ size = 14, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 7h11v9H3z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d="M14 10h4l3 3v3h-7z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d="M7 19a1.6 1.6 0 100-3.2A1.6 1.6 0 007 19zM17.5 19a1.6 1.6 0 100-3.2 1.6 1.6 0 000 3.2z" fill={color} />
+    </Svg>
+  );
+}
+
+function SuccessBadge({ color }: { color: string }) {
+  return (
+    <View className="items-center justify-center" style={{ height: 96, width: 96 }}>
+      <View
+        className="absolute"
+        style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: color, opacity: 0.12 }}
+      />
+      <View
+        className="items-center justify-center"
+        style={{
+          width: 68,
+          height: 68,
+          borderRadius: 34,
+          backgroundColor: color,
+          shadowColor: color,
+          shadowOpacity: 0.35,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 4,
+        }}
+      >
+        <CheckIcon size={30} />
+      </View>
+    </View>
+  );
+}
+
+function OrderTimeline({ colors }: { colors: ReturnType<typeof useAppTheme>["colors"] }) {
+  const steps = ["Placed", "Processing", "Shipped", "Delivered"];
+  return (
+    <View className="mt-5 flex-row items-start">
+      {steps.map((step, i) => (
+        <Fragment key={step}>
+          <View className="items-center" style={{ width: 56 }}>
+            <View
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 5,
+                backgroundColor: i === 0 ? colors.primary : "transparent",
+                borderWidth: i === 0 ? 0 : 1.5,
+                borderColor: colors.textMuted,
+              }}
+            />
+            <Text
+              className="mt-1.5 text-center text-[10px]"
+              style={{ color: i === 0 ? colors.text : colors.textMuted, fontWeight: i === 0 ? "600" : "400" }}
+            >
+              {step}
+            </Text>
+          </View>
+          {i < steps.length - 1 ? (
+            <View style={{ flex: 1, height: 1.5, backgroundColor: colors.elevated, marginTop: 5 }} />
+          ) : null}
+        </Fragment>
+      ))}
+    </View>
   );
 }
 
@@ -38,20 +129,40 @@ function RecommendationCard({
   return (
     <Pressable
       onPress={onPress}
-      className="mr-3 w-[150px] overflow-hidden rounded-[6px] shadow-sm"
-      style={{ backgroundColor: colors.card }}
+      className="mr-3 w-[152px] overflow-hidden rounded-[14px]"
+      style={{
+        backgroundColor: colors.card,
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 2,
+      }}
     >
-      <View className="relative h-[110px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
+      <View className="relative h-[130px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
         {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
-        <View className="absolute right-3 top-3">
-          <HeartOutlineIcon color={colors.primary} size={20} />
+        <View
+          className="absolute right-2.5 top-2.5 h-7 w-7 items-center justify-center rounded-full"
+          style={{ backgroundColor: "rgba(0,0,0,0.35)" }}
+        >
+          <HeartOutlineIcon color="#fff" size={16} />
         </View>
+        {rating > 0 ? (
+          <View
+            className="absolute bottom-2.5 left-2.5 flex-row items-center gap-1 rounded-full px-2 py-1"
+            style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+          >
+            <StarIcon size={9} />
+            <Text className="text-[10px] font-medium text-white">{rating.toFixed(1)}</Text>
+          </View>
+        ) : null}
       </View>
-      <View className="px-2.5 pb-3 pt-3">
-        <Text className="text-[12px] font-medium" style={{ color: colors.text }} numberOfLines={1}>{product.title}</Text>
-        <Text className="mt-1 text-[14px] font-medium" style={{ color: colors.text }}>{price}</Text>
-        <Text className="mt-1 text-[9px]" style={{ color: colors.textMuted }}>
-          {rating > 0 ? `★ ${rating.toFixed(1)}` : "No ratings yet"}
+      <View className="px-3 pb-3 pt-2.5">
+        <Text className="text-[12.5px] font-medium" style={{ color: colors.text }} numberOfLines={1}>
+          {product.title}
+        </Text>
+        <Text className="mt-1 text-[14.5px] font-semibold" style={{ color: colors.text }}>
+          {price}
         </Text>
       </View>
     </Pressable>
@@ -75,9 +186,19 @@ function BottomQuickNav({
 
   return (
     <View className="px-4 pb-4 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
+      <View
+        className="flex-row items-center justify-between rounded-[18px] px-7 py-4"
+        style={{
+          backgroundColor: colors.card,
+          shadowColor: "#000",
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: -2 },
+          elevation: 6,
+        }}
+      >
         {items.map((item) => (
-          <Pressable key={item.routeName} onPress={() => onNavigate(item.path)}>
+          <Pressable key={item.routeName} onPress={() => onNavigate(item.path)} hitSlop={8}>
             <TabIcon routeName={item.routeName} color={colors.primary} />
           </Pressable>
         ))}
@@ -148,13 +269,7 @@ export default function OrderOverviewScreen() {
         stickyHeaderIndices={[0]}
         contentContainerStyle={{ paddingBottom: 20 }}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => {
-              setIsRefreshing(true);
-              void loadData();
-            }}
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void loadData(); }} />
         }
       >
         <View className="px-4 pb-3" style={{ paddingTop: Math.max(insets.top + 4, 12), backgroundColor: colors.background }}>
@@ -162,37 +277,85 @@ export default function OrderOverviewScreen() {
             <Pressable className="h-8 w-8 items-center justify-center" hitSlop={12} onPress={() => goBackOr(router)}>
               <BackIcon />
             </Pressable>
+            <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>Order Overview</Text>
             <Pressable onPress={() => router.push("/notifications")} hitSlop={12}>
               <BellDarkIcon />
             </Pressable>
           </View>
 
-          <Text className="text-[24px] font-medium" style={{ color: colors.text }}>Order Overview</Text>
-
-          <View className="mt-4 rounded-[10px] border px-4 py-4" style={{ borderColor: colors.primary, backgroundColor: colors.card }}>
+          {/* Hero / receipt card */}
+          <View
+            className="rounded-[20px] px-5 py-6"
+            style={{
+              backgroundColor: colors.card,
+              shadowColor: "#000",
+              shadowOpacity: 0.06,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 3,
+            }}
+          >
             <View className="items-center">
-              <SuccessBadgeIcon />
-              <Text className="mt-3 text-[16px] font-medium" style={{ color: colors.text }}>Payment Has Been Confirmed</Text>
-              <Text className="mt-1 text-center text-[13px]" style={{ color: colors.textMuted }}>Order ID: {activeOrderId}</Text>
-              {orderDate ? <Text className="mt-1 text-center text-[12px]" style={{ color: colors.textMuted }}>Date: {orderDate}</Text> : null}
+              <SuccessBadge color={colors.primary} />
+              <Text className="mt-4 text-[18px] font-semibold" style={{ color: colors.text }}>
+                Payment Confirmed
+              </Text>
+              <Text className="mt-1 text-center text-[13px]" style={{ color: colors.textMuted }}>
+                Your order is being prepared
+              </Text>
+
+              <View
+                className="mt-4 flex-row items-center gap-2 rounded-full px-3.5 py-1.5"
+                style={{ backgroundColor: colors.elevated }}
+              >
+                <Text
+                  className="text-[12px]"
+                  style={{ color: colors.textMuted, fontFamily: "monospace" as const }}
+                >
+                  #{activeOrderId}
+                </Text>
+                {orderDate ? (
+                  <>
+                    <View style={{ width: 1, height: 10, backgroundColor: colors.textMuted, opacity: 0.4 }} />
+                    <Text className="text-[12px]" style={{ color: colors.textMuted }}>{orderDate}</Text>
+                  </>
+                ) : null}
+              </View>
             </View>
 
-            <View className="mt-4 flex-row justify-between">
-              <View>
-                <Text className="text-[14px]" style={{ color: colors.text }}>Total *{itemCount || 1}</Text>
-                <Text className="mt-1 text-[20px] font-medium" style={{ color: colors.text }}>{formatMoney(totalAmount)}</Text>
+            <OrderTimeline colors={colors} />
+
+            <View
+              className="mt-6 flex-row items-center justify-between border-t pt-5"
+              style={{ borderColor: colors.elevated, borderStyle: "dashed" }}
+            >
+              <View className="flex-1">
+                <View className="flex-row items-center gap-1.5">
+                  <BagIcon color={colors.textMuted} />
+                  <Text className="text-[12px]" style={{ color: colors.textMuted }}>
+                    Total ({itemCount || 1} item{itemCount === 1 ? "" : "s"})
+                  </Text>
+                </View>
+                <Text className="mt-1.5 text-[18px] font-semibold" style={{ color: colors.text }}>
+                  {formatMoney(totalAmount)}
+                </Text>
               </View>
-              <View>
-                <Text className="text-[14px]" style={{ color: colors.text }}>Est. Delivery</Text>
-                <Text className="mt-1 text-[20px] font-medium" style={{ color: colors.text }}>{estDeliveryRange}</Text>
+              <View className="flex-1 items-end">
+                <View className="flex-row items-center gap-1.5">
+                  <TruckIcon color={colors.textMuted} />
+                  <Text className="text-[12px]" style={{ color: colors.textMuted }}>Est. Delivery</Text>
+                </View>
+                <Text className="mt-1.5 text-[13px] font-semibold" style={{ color: colors.text }}>
+                  {estDeliveryRange}
+                </Text>
               </View>
             </View>
           </View>
 
           <View className="mb-4 mt-7 flex-row items-center justify-between">
-            <Text className="text-[16px] font-medium text-primary">Recommendations</Text>
+            <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>You might also like</Text>
             <Pressable onPress={() => router.push("/featured")}>
-            <Text className="text-[14px] underline" style={{ color: colors.text }}>More</Text>
+              <Text className="text-[13px] font-medium" style={{ color: colors.primary }}>See all</Text>
             </Pressable>
           </View>
 
@@ -212,8 +375,18 @@ export default function OrderOverviewScreen() {
             ))}
           </ScrollView>
 
-          <Pressable onPress={() => router.replace("/(tabs)")} className="mt-8 rounded-full bg-primary py-3.5">
-            <Text className="text-center text-[16px] font-medium text-white">Homepage</Text>
+          <Pressable
+            onPress={() => router.replace("/(tabs)")}
+            className="mt-8 rounded-full bg-primary py-4"
+            style={{
+              shadowColor: colors.primary,
+              shadowOpacity: 0.3,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 3,
+            }}
+          >
+            <Text className="text-center text-[16px] font-semibold text-white">Back to Home</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -222,7 +395,3 @@ export default function OrderOverviewScreen() {
     </View>
   );
 }
-
-
-
-
