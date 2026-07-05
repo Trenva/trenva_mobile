@@ -277,6 +277,37 @@ export default function WalletScreen() {
             </View>
           </View>
 
+          {/* create a section that tells the user that they can add funds to their wallet and a button that takes them to the wallet topup page or do a bank transfer to their account number above */}
+          <View className="mt-6 rounded-[20px] px-5 py-5" style={{ backgroundColor: colors.card }}>
+            <Text className="text-[16px] font-bold" style={{ color: colors.text }}>
+              Funding Options
+            </Text>
+            <View className="mt-2 flex gap-1 p-5 rounded-[12px]" style={{ backgroundColor: colors.elevated }}>
+                <Text className="text-[16px] font-semibold text-primary">
+                  🏦 Bank Transfer
+                </Text>
+                <Text className="text-[14px]" style={{ color: colors.textMuted }}>
+                  Transfer to your personal account number above. Funds are automatically credited within minutes.
+                </Text>
+            </View>
+            
+            <View className="mt-2 flex gap-1 p-5 rounded-[12px]" style={{ backgroundColor: colors.elevated }}>
+              <Text className="text-[16px] font-semibold text-primary">
+                💳 Fund your wallet
+              </Text>
+              <Text className="text-[14px]" style={{ color: colors.textMuted }}>
+                Processed securely via Paystack.
+              </Text>
+            </View>
+          </View> 
+
+          <Pressable
+            onPress={() => router.push("/wallet-topup")}
+            className="mt-4 rounded-md bg-primary py-3.5"
+          >
+            <Text className="text-center text-[16px] font-medium text-white">Add Funds to Wallet</Text>
+          </Pressable>
+
           <View className="mt-9 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-primary">Recent transactions</Text>
             <View className="flex-row items-center gap-3">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -26,11 +26,13 @@ export default function TransactionsScreen() {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<ApiTransaction | null>(null);
 
   async function loadTransactions() {
+    setIsLoading(true);
     try {
       const rows = await getTransactions({ status: "success" });
       setTransactions(rows);
@@ -45,6 +47,7 @@ export default function TransactionsScreen() {
       setTransactions([]);
     } finally {
       setIsRefreshing(false);
+      setIsLoading(false);
     }
   }
 
@@ -83,34 +86,45 @@ export default function TransactionsScreen() {
         </View>
 
         <View className="px-5 pb-8">
+          {isLoading ? (
+            <View className="mt-10 items-center justify-center py-8">
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text className="mt-3 text-[14px]" style={{ color: colors.textMuted }}>
+                Loading transactions...
+              </Text>
+            </View>
+          ) : null}
+
           {errorText ? <Text className="mt-3 text-[14px]" style={{ color: colors.error }}>{errorText}</Text> : null}
-          {!errorText && sortedTransactions.length === 0 ? (
+          {!isLoading && !errorText && sortedTransactions.length === 0 ? (
             <Text className="mt-6 text-[14px]" style={{ color: colors.textMuted }}>No wallet transactions yet.</Text>
           ) : null}
 
-          <View className="mt-6 gap-5">
-            {sortedTransactions.map((transaction) => {
-              const amount = toTransactionAmount(transaction);
-              return (
-                <Pressable
-                  key={String(transaction.id)}
-                  onPress={() => setSelectedTransaction(transaction)}
-                  className="flex-row items-center justify-between"
-                >
-                  <View className="h-10 w-10 rounded-full" style={{ backgroundColor: colors.elevated }} />
-                  <View className="ml-4 flex-1 pr-3">
-                    <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>
-                      {transaction.description || transaction.reference || "Wallet transaction"}
+          {!isLoading ? (
+            <View className="mt-6 gap-5">
+              {sortedTransactions.map((transaction) => {
+                const amount = toTransactionAmount(transaction);
+                return (
+                  <Pressable
+                    key={String(transaction.id)}
+                    onPress={() => setSelectedTransaction(transaction)}
+                    className="flex-row items-center justify-between"
+                  >
+                    <View className="h-10 w-10 rounded-full" style={{ backgroundColor: colors.elevated }} />
+                    <View className="ml-4 flex-1 pr-3">
+                      <Text className="text-[16px] font-semibold" style={{ color: colors.text }}>
+                        {transaction.description || transaction.reference || "Wallet transaction"}
+                      </Text>
+                      <Text className="text-[13px]" style={{ color: colors.textMuted }}>{transaction.formatted_date || "Unknown time"}</Text>
+                    </View>
+                    <Text className="text-right text-[18px] font-medium" style={{ color: amount.positive ? colors.success : colors.error, minWidth: 96 }}>
+                      {amount.text}
                     </Text>
-                    <Text className="text-[13px]" style={{ color: colors.textMuted }}>{transaction.formatted_date || "Unknown time"}</Text>
-                  </View>
-                  <Text className="text-right text-[18px] font-medium" style={{ color: amount.positive ? colors.success : colors.error, minWidth: 96 }}>
-                    {amount.text}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
       </ScrollView>
       <TransactionDetailsSheet

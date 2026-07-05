@@ -146,8 +146,9 @@ function LayoutContent() {
 
 function shouldShowChatBubble(segments: string[]) {
   const topLevel = segments[0] ?? "";
+  if (!topLevel) return false;
   if (topLevel === "(auth)" || topLevel === "(checkout-flow)") return false;
-  if (segments.some((segment) => segment === "auth-callback")) return false;
+  if (segments.some((segment) => segment === "auth-callback" || segment === "index")) return false;
   return true;
 }
 

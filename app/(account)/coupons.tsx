@@ -102,7 +102,7 @@ function CouponCard({
       : null;
 
   return (
-    <View className="mb-4 overflow-hidden rounded-[12px] px-3 py-3">
+    <View className="overflow-hidden rounded-[12px] px-3 py-3">
       <View className="absolute inset-0">
         <Svg width="100%" height="100%" viewBox="0 0 420 180" preserveAspectRatio="none">
           <Defs>
@@ -311,7 +311,7 @@ export default function CouponsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        className="flex-1 px-4"
+        className="flex-1 px-1"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -344,7 +344,7 @@ export default function CouponsScreen() {
           ) : null}
 
           {data.map((coupon) => (
-            <View key={coupon.id} className="border-t pt-4" style={{ borderColor: colors.border }}>
+            <View key={coupon.id} className="border-t pt-2" style={{ borderColor: colors.border }}>
               <CouponCard
                 item={coupon}
                 expired={tab === "expired"}
@@ -358,8 +358,6 @@ export default function CouponsScreen() {
           ))}
         </View>
       </ScrollView>
-
-      <BottomQuickNav colors={colors} onNavigate={(path) => router.push(path)} />
     </View>
   );
 }

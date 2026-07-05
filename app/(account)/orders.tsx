@@ -3,18 +3,19 @@ import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Text, 
 import { useRouter } from "expo-router";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
 import { LoadingListSkeleton } from "../../components/ui/loading-skeleton";
-import { CachedImage, ProductCardImage, prefetchImageUris } from "../../components/ui/cached-image";
+import { ProductCardImage, prefetchImageUris } from "../../components/ui/cached-image";
 import { clearAuthTokens } from "../../lib/auth/tokens";
 import { getApiErrorMessage, isUnauthorizedError } from "../../lib/api/errors";
 import {
   addOrIncrementCartItemWithOptions,
   createProductReview,
   type ApiOrder,
+  type ApiOrderItemReturn,
   type ApiProduct,
   formatMoney,
+  getMyOrderItemsReturnInfo,
   getOrders,
   getPublishedProductsFiltered,
   isExplicitlyOutOfStock,
@@ -23,15 +24,10 @@ import {
 import { notifyError, notifySuccess } from "../../lib/ui/notify";
 import { useAppTheme } from "../../lib/theme/theme-provider";
 import { promptLoginRequired } from "../../lib/ui/login-required";
+
 const ICON_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
-function Star({
-  active,
-  onPress,
-}: {
-  active: boolean;
-  onPress: () => void;
-}) {
+function Star({ active, onPress }: { active: boolean; onPress: () => void }) {
   const { colors } = useAppTheme();
   return (
     <Pressable onPress={onPress} className="px-1 py-1" hitSlop={ICON_HIT_SLOP}>
@@ -44,6 +40,7 @@ function Star({
 
 type OrderRow = {
   id: string;
+  itemId?: string;
   orderOid: string;
   orderNumericId?: number;
   trackingId?: string | null;
@@ -56,124 +53,116 @@ type OrderRow = {
   qty?: number;
   productColor?: string | null;
   productSize?: string | null;
-  itemCount: number;
 };
 
-function ItemArtwork({
-  imageUrl,
-  colors,
-}: {
-  imageUrl?: string | null;
-  colors: ReturnType<typeof useAppTheme>["colors"];
-}) {
+function StatusPill({ status, colors }: { status: string; colors: ReturnType<typeof useAppTheme>["colors"] }) {
+  const normalized = status.toLowerCase();
+  const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown";
+  let bg = colors.elevated;
+  let fg = colors.textMuted;
+
+  if (["placed", "processing", "pending"].some((s) => normalized.includes(s))) {
+    bg = "#FFF3E0";
+    fg = "#F57C00";
+  } else if (normalized.includes("shipped")) {
+    bg = "#E3F2FD";
+    fg = "#1976D2";
+  } else if (normalized.includes("delivered") || normalized.includes("completed")) {
+    bg = "#E8F5E9";
+    fg = "#2E7D32";
+  } else if (["cancel", "refund", "rejected", "failed"].some((s) => normalized.includes(s))) {
+    bg = "#FFEBEE";
+    fg = "#C62828";
+  }
+
   return (
-    <View className="h-[92px] w-[92px] overflow-hidden" style={{ backgroundColor: colors.elevated }}>
-      {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
+    <View className="self-start rounded-full px-2.5 py-1" style={{ backgroundColor: bg }}>
+      <Text className="text-[10.5px] font-semibold" style={{ color: fg }}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function ActiveCard({
+function OrderItemCard({
   item,
-  onTrack,
-  onViewDetails,
-  colors,
-}: {
-  item: OrderRow;
-  onTrack: (item: OrderRow) => void;
-  onViewDetails: (item: OrderRow) => void;
-  colors: ReturnType<typeof useAppTheme>["colors"];
-}) {
-  return (
-    <View className="border-b py-4" style={{ borderColor: colors.border }}>
-      <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
-        <View className="ml-3 flex-1">
-          <Text className="text-[13px] font-medium" style={{ color: colors.text }}>Order No: {item.orderNo}</Text>
-          <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>{item.itemCount} item(s) in this order</Text>
-          <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
-        </View>
-        <Pressable onPress={() => onTrack(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[14px]" style={{ color: colors.background }}>Track Order</Text>
-        </Pressable>
-      </View>
-      <View className="mt-3 items-end">
-        <Pressable onPress={() => onViewDetails(item)} hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[13px] underline" style={{ color: colors.text }}>View details</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function CompletedCard({
-  item,
-  onLeaveReview,
-  onViewDetails,
-  colors,
-}: {
-  item: OrderRow;
-  onLeaveReview: (item: OrderRow) => void;
-  onViewDetails: (item: OrderRow) => void;
-  colors: ReturnType<typeof useAppTheme>["colors"];
-}) {
-  return (
-    <View className="border-b py-4" style={{ borderColor: colors.border }}>
-      <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
-        <View className="ml-3 flex-1">
-          <Text className="text-[13px] font-medium" style={{ color: colors.text }}>Order No: {item.orderNo}</Text>
-          <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>{item.itemCount} item(s) in this order</Text>
-          <Text className="mt-2 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
-        </View>
-        <Pressable onPress={() => onLeaveReview(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[14px]" style={{ color: colors.background }}>Leave Review</Text>
-        </Pressable>
-      </View>
-      <View className="mt-3 items-end">
-        <Pressable onPress={() => onViewDetails(item)} hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[13px] underline" style={{ color: colors.text }}>View details</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function CancelledCard({
-  item,
+  primaryAction,
   onReorder,
   onViewDetails,
   colors,
 }: {
   item: OrderRow;
+  primaryAction: { label: string; onPress: (item: OrderRow) => void } | null;
   onReorder: (item: OrderRow) => void;
   onViewDetails: (item: OrderRow) => void;
   colors: ReturnType<typeof useAppTheme>["colors"];
 }) {
+  const imageUrl = resolveProductCardImageUrl(item.image);
+
   return (
-    <View className="border-b py-4" style={{ borderColor: colors.border }}>
-      <View className="flex-row items-center">
-        <ItemArtwork imageUrl={resolveProductCardImageUrl(item.image)} colors={colors} />
-        <View className="ml-3 flex-1">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-[13px] font-medium" style={{ color: colors.text }}>Order No: {item.orderNo}</Text>
-            <Text className="text-[13px]" style={{ color: colors.textMuted }}>{item.date}</Text>
-          </View>
-          <View className="mt-1 self-start bg-primary px-2 py-0.5">
-            <Text className="text-[11px] font-semibold" style={{ color: colors.background }}>REFUNDED</Text>
-          </View>
-          <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>{item.itemCount} item(s) in this order</Text>
-          <Text className="mt-1 text-[15px]" style={{ color: colors.text }}>{formatMoney(item.price)}</Text>
+    <View
+      className="mb-1 rounded-[16px] p-3.5 w-full"
+      style={{
+        backgroundColor: colors.card,
+        shadowColor: "#000",
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 1,
+      }}
+    >
+      <Pressable onPress={() => onViewDetails(item)} hitSlop={ICON_HIT_SLOP}>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-[12px] font-medium" style={{ color: colors.textMuted }}>
+          Order No: {item.orderNo}
+        </Text>
+        <Text className="text-[11px]" style={{ color: colors.textMuted }}>
+          {item.date}
+        </Text>
+      </View>
+
+      <View className="mt-2.5 flex-row items-center">
+        <View className="h-[76px] w-[76px] overflow-hidden rounded-[10px]" style={{ backgroundColor: colors.elevated }}>
+          {imageUrl ? <ProductCardImage uri={imageUrl} className="h-full w-full" /> : null}
         </View>
-        <Pressable onPress={() => onReorder(item)} className="rounded-full bg-primary px-4 py-2" hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[14px]" style={{ color: colors.background }}>Re - Order</Text>
-        </Pressable>
+        <View className="ml-3 flex-1 pr-2">
+          <Text numberOfLines={2} className="text-[14px] font-medium" style={{ color: colors.text }}>
+            {item.name}
+          </Text>
+          <Text className="mt-1 text-[12px]" style={{ color: colors.textMuted }}>
+            Qty: {item.qty ?? 1}
+          </Text>
+          <Text className="mt-1 text-[15px] font-semibold" style={{ color: colors.text }}>
+            {formatMoney(item.price)}
+          </Text>
+        </View>
+        <StatusPill status={item.status} colors={colors} />
       </View>
-      <View className="mt-3 items-end">
-        <Pressable onPress={() => onViewDetails(item)} hitSlop={ICON_HIT_SLOP}>
-          <Text className="text-[13px] underline" style={{ color: colors.text }}>View details</Text>
-        </Pressable>
+
+      <View className="mt-3.5 flex-row items-center justify-between">
+        <View className="flex-row gap-2">
+          {primaryAction ? (
+            <Pressable
+              onPress={() => primaryAction.onPress(item)}
+              className="rounded-full bg-primary px-4 py-2"
+              hitSlop={ICON_HIT_SLOP}
+            >
+              <Text className="text-[13px] font-medium" style={{ color: colors.background }}>
+                {primaryAction.label}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => onReorder(item)}
+            className="rounded-full border px-4 py-2"
+            style={{ borderColor: colors.primary }}
+            hitSlop={ICON_HIT_SLOP}
+          >
+            <Text className="text-[13px] font-medium text-primary">Re-order</Text>
+          </Pressable>
+        </View>
       </View>
+      </Pressable>
     </View>
   );
 }
@@ -182,7 +171,7 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<"active" | "completed" | "cancelled">("active");
+  const [tab, setTab] = useState<"active" | "completed" | "cancelled" | "returns">("active");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
@@ -193,73 +182,91 @@ export default function OrdersScreen() {
   const [reviewText, setReviewText] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [returnInfoByItemId, setReturnInfoByItemId] = useState<Map<string, ApiOrderItemReturn>>(new Map());
 
   const flattenedRows = useMemo(() => {
-    const rows: Array<OrderRow> = [];
-    for (const order of orders) {
-      const orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString() : "";
-      const orderStatus = String(order.product_status ?? "").toLowerCase();
-      const orderItems = order.items ?? [];
-      const firstItem = orderItems[0];
-      if (orderItems.length === 0) {
-        rows.push({
-          id: `${order.oid}-empty`,
-          orderOid: order.oid,
-          orderNumericId: order.id,
-          trackingId: order.tracking_id,
-          name: "Order",
-          price: order.price ?? 0,
-          orderNo: order.oid,
-          date: orderDate,
-          image: null,
-          qty: 1,
-          productColor: "Default",
-          productSize: "Default",
-          status: orderStatus,
-          itemCount: 0,
-        });
-      } else {
-        rows.push({
-          id: `${order.oid}-${firstItem?.id ?? "first"}`,
-          orderOid: order.oid,
-          orderNumericId: order.id,
-          trackingId: order.tracking_id,
-          name: firstItem?.product_name ?? firstItem?.item ?? "Product",
-          price: order.price ?? firstItem?.total ?? firstItem?.price ?? 0,
-          orderNo: order.oid,
-          date: orderDate || (firstItem?.order_date ? new Date(firstItem.order_date).toLocaleDateString() : ""),
-          image: firstItem?.image ?? null,
-          qty: firstItem?.qty ?? 1,
-          productColor: firstItem?.product_color ?? "Default",
-          productSize: firstItem?.product_size ?? "Default",
-          status: String(order.product_status ?? firstItem?.product_status ?? orderStatus).toLowerCase(),
-          itemCount: orderItems.length,
-        });
-      }
-    }
-    return rows;
-  }, [orders]);
+      const rows: Array<OrderRow> = [];
+      for (const order of orders) {
+        const orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString() : "";
+        const orderStatus = String(order.product_status ?? "").toLowerCase();
+        const orderItems = order.items ?? [];
 
-  async function loadOrders(showLoader = true) {
-    try {
-      if (showLoader) setIsLoading(true);
-      const ordersData = await getOrders();
-      setOrders(ordersData);
-      setErrorText(null);
-    } catch (error) {
-      if (isUnauthorizedError(error)) {
-        await clearAuthTokens();
-        promptLoginRequired(router, "Please sign in to view your orders.");
-        return;
+        if (orderItems.length === 0) {
+          rows.push({
+            id: `${order.oid}-empty`,
+            itemId: undefined,
+            orderOid: order.oid,
+            orderNumericId: order.id,
+            trackingId: order.tracking_id,
+            name: "Order",
+            price: order.price ?? 0,
+            orderNo: order.oid,
+            date: orderDate,
+            image: null,
+            qty: 1,
+            productColor: "Default",
+            productSize: "Default",
+            status: orderStatus,
+          });
+          continue;
+        }
+
+        for (const orderItem of orderItems) {
+          const returnEntry = returnInfoByItemId.get(String(orderItem.id));
+          const baseStatus = String(order.product_status ?? orderItem.product_status ?? orderStatus).toLowerCase();
+          // If this specific item has an active return, it moves to the Returns tab on its own —
+          // sibling items in the same order keep their original status untouched.
+          const displayStatus = returnEntry?.already_returned
+            ? `return ${returnEntry.return_status ?? "pending"}`
+            : baseStatus;
+
+          rows.push({
+            id: `${order.oid}-${orderItem.id}`,
+            itemId: String(orderItem.id),
+            orderOid: order.oid,
+            orderNumericId: order.id,
+            trackingId: order.tracking_id,
+            name: orderItem.product_name ?? orderItem.item ?? "Product",
+            price: orderItem.total ?? orderItem.price ?? 0,
+            orderNo: order.oid,
+            date: orderDate || (orderItem.order_date ? new Date(orderItem.order_date).toLocaleDateString() : ""),
+            image: orderItem.image ?? null,
+            qty: orderItem.qty ?? 1,
+            productColor: orderItem.product_color ?? "Default",
+            productSize: orderItem.product_size ?? "Default",
+            status: displayStatus,
+          });
+        }
       }
-      setOrders([]);
-      setProducts([]);
-      setErrorText(getApiErrorMessage(error, "Unable to load orders right now."));
-    } finally {
-      if (showLoader) setIsLoading(false);
-      setIsRefreshing(false);
+      return rows;
+    }, [orders, returnInfoByItemId]);
+
+    async function loadOrders(showLoader = true) {
+      try {
+        if (showLoader) setIsLoading(true);
+        const [ordersData, returnItems] = await Promise.all([
+          getOrders(),
+          getMyOrderItemsReturnInfo().catch(() => [] as ApiOrderItemReturn[]),
+        ]);
+        setOrders(ordersData);
+        setReturnInfoByItemId(new Map(returnItems.map((item) => [String(item.id), item])));
+        setErrorText(null);
+      } catch (error) {
+        if (isUnauthorizedError(error)) {
+          await clearAuthTokens();
+          promptLoginRequired(router, "Please sign in to view your orders.");
+          return;
+        }
+        setOrders([]);
+        setProducts([]);
+        setReturnInfoByItemId(new Map());
+        setErrorText(getApiErrorMessage(error, "Unable to load orders right now."));
+      } finally {
+        if (showLoader) setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
-  }
+
 
   useEffect(() => {
     let mounted = true;
@@ -329,6 +336,11 @@ export default function OrdersScreen() {
     [flattenedRows],
   );
 
+  const returnRows = useMemo(
+    () => flattenedRows.filter((row) => row.status.includes("return")),
+    [flattenedRows],
+  );
+
   const productLookup = useMemo(() => {
     const map = new Map<string, ApiProduct>();
     for (const product of products) {
@@ -341,22 +353,12 @@ export default function OrdersScreen() {
     prefetchImageUris(flattenedRows.map((row) => resolveProductCardImageUrl(row.image)), 20);
   }, [flattenedRows]);
 
-  async function handleTrackOrder(item: OrderRow) {
-    router.push({
-      pathname: "/order-details",
-      params: {
-        oid: item.orderOid,
-      },
-    });
+  function handleTrackOrder(item: OrderRow) {
+    router.push({ pathname: "/order-details", params: { oid: item.orderOid, itemId: item.itemId } });
   }
 
   function handleViewOrderDetails(item: OrderRow) {
-    router.push({
-      pathname: "/order-details",
-      params: {
-        oid: item.orderOid,
-      },
-    });
+    router.push({ pathname: "/order-details", params: { oid: item.orderOid, itemId: item.itemId } });
   }
 
   function handleLeaveReview(item: OrderRow) {
@@ -385,11 +387,7 @@ export default function OrdersScreen() {
 
     setIsSubmittingReview(true);
     try {
-      await createProductReview({
-        productId,
-        rating: reviewRating,
-        review: text,
-      });
+      await createProductReview({ productId, rating: reviewRating, review: text });
       notifySuccess("Review submitted", "Thanks for your feedback.");
       setReviewModalVisible(false);
       setReviewTarget(null);
@@ -427,7 +425,11 @@ export default function OrdersScreen() {
     }
   }
 
-  const currentRows = tab === "active" ? activeRows : tab === "completed" ? completedRows : cancelledRows;
+  const currentRows =
+    tab === "active" ? activeRows :
+    tab === "completed" ? completedRows :
+    tab === "returns" ? returnRows :
+    cancelledRows;
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
@@ -444,19 +446,20 @@ export default function OrdersScreen() {
           {[
             { key: "active", label: "Active" },
             { key: "completed", label: "Completed" },
+            { key: "returns", label: "Returns" },
             { key: "cancelled", label: "Cancelled" },
           ].map((t) => {
             const isActive = tab === (t.key as typeof tab);
             return (
-              <Pressable
-                key={t.key}
-                onPress={() => setTab(t.key as typeof tab)}
-                className="flex-1 items-center pb-3"
-              >
+              <Pressable key={t.key} onPress={() => setTab(t.key as typeof tab)} className="flex-1 items-center pb-3">
                 <Text className={`text-[17px] ${isActive ? "font-medium" : ""}`} style={{ color: colors.text }}>
                   {t.label}
                 </Text>
-                {isActive ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full" style={{ backgroundColor: colors.border }} />}
+                {isActive ? (
+                  <View className="mt-3 h-[3px] w-full bg-primary" />
+                ) : (
+                  <View className="mt-3 h-[1px] w-full" style={{ backgroundColor: colors.border }} />
+                )}
               </Pressable>
             );
           })}
@@ -465,18 +468,12 @@ export default function OrdersScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        className="flex-1 px-4"
+        className="flex-1 px-1"
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => {
-              setIsRefreshing(true);
-              void loadOrders(false);
-            }}
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); void loadOrders(false); }} />
         }
       >
-        <View className="pt-1">
+        <View className="pt-3">
           {isLoading ? (
             <View className="px-1">
               <LoadingListSkeleton rows={4} />
@@ -489,14 +486,60 @@ export default function OrdersScreen() {
               </Pressable>
             </View>
           ) : null}
+
           {!isLoading && currentRows.length === 0 ? (
             <View className="items-center py-10">
               <Text className="text-[14px]" style={{ color: colors.textMuted }}>No {tab} orders yet.</Text>
             </View>
           ) : null}
-          {!isLoading && tab === "active" && activeRows.map((item) => <ActiveCard key={item.id} item={item} onTrack={handleTrackOrder} onViewDetails={handleViewOrderDetails} colors={colors} />)}
-          {!isLoading && tab === "completed" && completedRows.map((item) => <CompletedCard key={item.id} item={item} onLeaveReview={handleLeaveReview} onViewDetails={handleViewOrderDetails} colors={colors} />)}
-          {!isLoading && tab === "cancelled" && cancelledRows.map((item) => <CancelledCard key={item.id} item={item} onReorder={handleReorder} onViewDetails={handleViewOrderDetails} colors={colors} />)}
+
+          {!isLoading && tab === "active" &&
+            activeRows.map((item) => (
+              <OrderItemCard
+                key={item.id}
+                item={item}
+                // primaryAction={{ label: "Track Order", onPress: handleTrackOrder }}
+                primaryAction={null}
+                onReorder={handleReorder}
+                onViewDetails={handleViewOrderDetails}
+                colors={colors}
+              />
+            ))}
+
+          {!isLoading && tab === "completed" &&
+            completedRows.map((item) => (
+              <OrderItemCard
+                key={item.id}
+                item={item}
+                primaryAction={{ label: "Leave Review", onPress: handleLeaveReview }}
+                onReorder={handleReorder}
+                onViewDetails={handleViewOrderDetails}
+                colors={colors}
+              />
+            ))}
+
+          {!isLoading && tab === "cancelled" &&
+            cancelledRows.map((item) => (
+              <OrderItemCard
+                key={item.id}
+                item={item}
+                primaryAction={null}
+                onReorder={handleReorder}
+                onViewDetails={handleViewOrderDetails}
+                colors={colors}
+              />
+            ))}
+          {!isLoading && tab === "returns" &&
+          returnRows.map((item) => (
+            <OrderItemCard
+              key={item.id}
+              item={item}
+              primaryAction={null}
+              onReorder={handleReorder}
+              onViewDetails={handleViewOrderDetails}
+              colors={colors}
+            />
+          ))}
         </View>
       </ScrollView>
 
@@ -538,9 +581,6 @@ export default function OrdersScreen() {
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }
-
-

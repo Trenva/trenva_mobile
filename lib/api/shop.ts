@@ -269,6 +269,91 @@ export type ApiTransaction = {
   formatted_date?: string;
 };
 
+export type ApiReturnImage = {
+  id: number;
+  image: string;
+  image_url: string | null;
+  uploaded_at: string;
+};
+
+export type ApiOrderItemReturn = {
+  id: number;
+  unique_id?: string;
+  order: number;
+  order_oid: string;
+  order_date: string;
+  item: string;
+  qty: number;
+  price: string | number;
+  total: string | number;
+  product_status: string;
+  vendor?: string | null;
+  vendor_id?: string | null;
+  product_color?: string | null;
+  product_size?: string | null;
+  image?: string | null;
+  image_url?: string | null;
+  return_reason?: string | null;
+  return_reason_category?: string | null;
+  return_status?: string | null;
+  refund_amount?: string | number | null;
+  is_refund_processed?: boolean;
+  refund_date?: string | null;
+  refund_preference?: string | null;
+  admin_notes?: string | null;
+  return_images: ApiReturnImage[];
+  can_return: boolean;
+  already_returned: boolean;
+  return_status_display?: string | null;
+  return_reason_display?: string | null;
+};
+
+export async function getOrderItemReturnDetails(orderItemId: number | string) {
+  const response = await apiClient.get<ApiOrderItemReturn>(`/api/order-items/${orderItemId}/`);
+  return response.data;
+}
+
+export type RequestItemReturnPayload = {
+  returnReasonCategory: string;
+  returnReason?: string;
+  refundPreference: "wallet" | "voucher";
+  images: Array<{ uri: string; name: string; type: string }>;
+};
+
+export type RequestItemReturnResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  data?: ApiOrderItemReturn;
+};
+
+export async function requestItemReturn(orderItemId: number | string, payload: RequestItemReturnPayload) {
+  const formData = new FormData();
+  formData.append("return_reason_category", payload.returnReasonCategory);
+  if (payload.returnReason) formData.append("return_reason", payload.returnReason);
+  formData.append("refund_preference", payload.refundPreference);
+
+  for (let idx = 0; idx < payload.images.length; idx++) {
+    const img = payload.images[idx];
+    const fileResponse = await fetch(img.uri);
+    const blob = await fileResponse.blob();
+    formData.append("images", blob, img.name || `return_${idx}.jpg`);
+  }
+
+  const response = await apiClient.post<RequestItemReturnResponse>(
+    `/api/order-items/${orderItemId}/request-return/`,
+    formData,
+    {
+      transformRequest: (data) => data,
+    },
+  );
+  return response.data;
+}
+
+export async function getMyOrderItemsReturnInfo() {
+  return fetchAllPages<ApiOrderItemReturn>("/api/order-items/");
+}
+
 type MobilePaystackInitPayload = {
   addressId: number;
   deliveryMethod?: string;
@@ -330,6 +415,28 @@ type CouponValidateResponse = {
     used_by?: string[];
   };
 };
+
+
+type MobileWalletTopupInitPayload = {
+  amount: number;
+};
+
+type MobileWalletTopupInitResponse = {
+  success: boolean;
+  authorization_url?: string;
+  reference?: string;
+  amount?: string;
+  error?: string;
+};
+
+type MobileWalletTopupVerifyResponse = {
+  success: boolean;
+  already_processed?: boolean;
+  wallet_balance?: string;
+  amount?: string;
+  error?: string;
+};
+
 
 export type ApiCoupon = {
   id: number;
@@ -1155,6 +1262,20 @@ export async function mobileWalletCheckout(payload: MobileWalletCheckoutPayload)
     coupon_code: payload.couponCode?.trim() || "",
     coupon_id: payload.couponId ?? null,
     delivery_fee: payload.deliveryFee ?? null,
+  });
+  return response.data;
+}
+
+export async function mobileWalletTopupInit(payload: MobileWalletTopupInitPayload) {
+  const response = await apiClient.post<MobileWalletTopupInitResponse>("/api/wallet/topup/init/", {
+    amount: payload.amount,
+  });
+  return response.data;
+}
+
+export async function mobileWalletTopupVerify(reference: string) {
+  const response = await apiClient.post<MobileWalletTopupVerifyResponse>("/api/wallet/topup/verify/", {
+    reference,
   });
   return response.data;
 }

@@ -27,15 +27,16 @@ type ProductCardImageProps = {
   uri: string;
   className?: string;
   style?: StyleProp<ViewStyle>;
+  contentFit?: ImageContentFit;
 };
 
 // Hybrid render: background cover adds visual fullness while foreground contain keeps the full product visible.
-export function ProductCardImage({ uri, className, style }: ProductCardImageProps) {
+export function ProductCardImage({ uri, className, style, contentFit }: ProductCardImageProps) {
   return (
     <View className={className} style={[{ width: "100%", height: "100%", overflow: "hidden" }, style]}>
       <CachedImage
         uri={uri}
-        contentFit="contain"
+        contentFit={contentFit ?? "contain"}
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
       />
     </View>

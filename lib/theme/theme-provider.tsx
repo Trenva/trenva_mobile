@@ -83,7 +83,7 @@ function colorsForMode(mode: ThemeMode): ThemeColors {
   }
 
   return {
-    background: "#F8F9FA",
+    background: "#FCFCFC",
     card: "#FFFFFF",
     elevated: "#F3F4F6",
     text: "#2D2D2D",
