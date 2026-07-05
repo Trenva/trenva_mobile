@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Clipboard from "expo-clipboard";
 import { goBackOr } from "../../lib/navigation/go-back-or";
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { BackIcon } from "../../components/ui/general-ui";
@@ -46,32 +47,49 @@ function OrdersTabIcon({ active }: { active: boolean }) {
   );
 }
 
-function BottomQuickNav({
-  colors,
-  onNavigate,
-}: {
-  colors: ReturnType<typeof useAppTheme>["colors"];
-  onNavigate: (path: "/(tabs)" | "/(tabs)/cart" | "/(tabs)/wishlist" | "/orders" | "/(tabs)/profile") => void;
-}) {
+function TicketIcon({ color, size = 34 }: { color: string; size?: number }) {
   return (
-    <View className="px-4 pb-3 pt-2">
-      <View className="flex-row items-center justify-between rounded-[12px] px-7 py-4" style={{ backgroundColor: colors.card }}>
-        <Pressable onPress={() => onNavigate("/(tabs)")}>
-          <TabIcon routeName="index" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => onNavigate("/(tabs)/cart")}>
-          <TabIcon routeName="cart" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => onNavigate("/(tabs)/wishlist")}>
-          <TabIcon routeName="wishlist" color="#D4A04A" />
-        </Pressable>
-        <Pressable onPress={() => onNavigate("/orders")}>
-          <OrdersTabIcon active />
-        </Pressable>
-        <Pressable onPress={() => onNavigate("/(tabs)/profile")}>
-          <TabIcon routeName="profile" color="#D4A04A" />
-        </Pressable>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 8a2 2 0 012-2h14a2 2 0 012 2v2a1.5 1.5 0 000 3v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a1.5 1.5 0 000-3V8z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Path d="M14 6v12" stroke={color} strokeWidth={1.6} strokeDasharray="2.5 2.5" />
+    </Svg>
+  );
+}
+
+function CopyIcon({ color, size = 13 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M8 8h10v10H8z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d="M5 15V5h10" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function CouponSkeletonCard() {
+  const { colors } = useAppTheme();
+  return (
+    <View
+      className="mb-4 overflow-hidden rounded-[16px]"
+      style={{ backgroundColor: colors.elevated, height: 150, opacity: 0.6 }}
+    />
+  );
+}
+
+function EmptyState({ label, colors }: { label: string; colors: ReturnType<typeof useAppTheme>["colors"] }) {
+  return (
+    <View className="items-center py-16">
+      <View
+        className="h-16 w-16 items-center justify-center rounded-full"
+        style={{ backgroundColor: colors.elevated }}
+      >
+        <TicketIcon color={colors.textMuted} size={28} />
       </View>
+      <Text className="mt-4 text-[14px]" style={{ color: colors.textMuted }}>{label}</Text>
     </View>
   );
 }
@@ -89,8 +107,9 @@ function CouponCard({
   disabled?: boolean;
   isApplied?: boolean;
 }) {
+  const { colors } = useAppTheme();
   const gradientId = `couponGradient-${item.id}-${item.code}-${expired ? "expired" : "unused"}`;
-  const ctaText = expired ? "Expired" : isApplied ? "Added to checkout" : "Use Coupon";
+  const ctaText = expired ? "Expired" : isApplied ? "Added ✓" : "Use Coupon";
 
   const statusLabel =
     item.statusTag === "used_expired"
@@ -101,43 +120,156 @@ function CouponCard({
       ? "Expired"
       : null;
 
+  async function handleCopyCode() {
+    await Clipboard.setStringAsync(item.code);
+    notifySuccess("Copied", `Code ${item.code} copied.`);
+  }
+
   return (
-    <View className="overflow-hidden rounded-[12px] px-3 py-3">
-      <View className="absolute inset-0">
-        <Svg width="100%" height="100%" viewBox="0 0 420 180" preserveAspectRatio="none">
-          <Defs>
-            <LinearGradient id={gradientId} x1="0" y1="1" x2="1" y2="0">
-              <Stop offset="0" stopColor="#F8A100" />
-              <Stop offset="0.55" stopColor="#FF4B24" />
-              <Stop offset="1" stopColor="#FF1642" />
-            </LinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width="420" height="180" fill={`url(#${gradientId})`} />
-        </Svg>
-      </View>
-      <View className="relative">
-        <View className="flex-row items-start justify-between">
-          <View className="max-w-[72%]">
-            <Text className="text-[16px] font-semibold text-white">{item.title}</Text>
-            <Text className="mt-1 text-[14px] underline" style={{ color: "#1C1C1C" }}>{item.subtitle}</Text>
+    <View
+      className="mb-4 overflow-hidden rounded-[16px]"
+      style={{
+        backgroundColor: colors.card,
+        shadowColor: "#000",
+        shadowOpacity: expired ? 0.09 : 0.09,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: expired ? 0 : 2,
+        opacity: expired ? 0.85 : 1,
+      }}
+    >
+      {/* Top gradient banner with discount + status */}
+      <View className="relative overflow-hidden px-4 pb-5 pt-4">
+        {!expired ? (
+          <View className="absolute inset-0">
+            <Svg width="100%" height="100%" viewBox="0 0 420 140" preserveAspectRatio="none">
+              <Defs>
+                <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0" stopColor="#FF7A18" />
+                  <Stop offset="1" stopColor="#FF3E6C" />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="420" height="140" fill={`url(#${gradientId})`} />
+            </Svg>
           </View>
-          <Pressable
-            onPress={onUse}
-            disabled={expired || disabled || isApplied}
-            className="rounded-full bg-[#FFCF4A] px-4 py-2 disabled:opacity-70"
-          >
-            <Text className="text-[14px] text-white">{ctaText}</Text>
-          </Pressable>
-          {expired && statusLabel ? (
-            <View className="mt-2 self-end rounded-full border border-[#F5D5A1] bg-[#FFF4DF] px-3 py-1">
-              <Text className="text-[11px] font-medium text-[#A9751A]">{statusLabel}</Text>
+        ) : null}
+
+        <View className="flex-row items-start justify-between">
+          <View className="flex-row items-center gap-2.5">
+            <View
+              className="h-9 w-9 items-center justify-center rounded-full"
+              style={{ backgroundColor: expired ? colors.elevated : "rgba(255,255,255,0.25)" }}
+            >
+              <TicketIcon color={expired ? colors.textMuted : "#fff"} size={18} />
+            </View>
+            <View className="max-w-[190px]">
+              <Text
+                className="text-[16px] font-semibold"
+                style={{ color: expired ? colors.text : "#fff" }}
+              >
+                {item.title}
+              </Text>
+              <Text
+                className="mt-0.5 text-[12.5px]"
+                style={{ color: expired ? colors.textMuted : "rgba(255,255,255,0.9)" }}
+              >
+                {item.subtitle}
+              </Text>
+            </View>
+          </View>
+
+          {statusLabel ? (
+            <View className="rounded-full bg-white/90 px-2.5 py-1">
+              <Text className="text-[10.5px] font-semibold" style={{ color: "#A9751A" }}>{statusLabel}</Text>
             </View>
           ) : null}
         </View>
 
-        {item.dateLine ? <Text className="mt-5 text-[14px] text-[#1C1C1C]">{item.dateLine}</Text> : null}
-        {!expired ? <Text className="mt-2 text-[14px] text-[#1C1C1C]">Valid on all products</Text> : null}
-        <Text className="mt-2 self-end text-[18px] font-medium text-[#1C1C1C]">Code: {item.code}</Text>
+        {!expired ? (
+          <Text className="mt-3 text-[12.5px]" style={{ color: "rgba(255,255,255,0.9)" }}>
+            Valid on all products{item.dateLine ? ` • ${item.dateLine}` : ""}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Dashed divider with coupon "notches" */}
+      <View className="relative flex-row items-center">
+        <View
+          className="absolute -left-2.5 h-5 w-5 rounded-full"
+          style={{ backgroundColor: colors.background }}
+        />
+        <View className="mx-3 h-0 flex-1 border-t border-dashed" style={{ borderColor: colors.border }} />
+        <View
+          className="absolute -right-2.5 h-5 w-5 rounded-full"
+          style={{ backgroundColor: colors.background }}
+        />
+      </View>
+
+      {/* Code + CTA row */}
+      <View className="flex-row items-center justify-between px-4 py-3.5">
+        <Pressable onPress={handleCopyCode} className="flex-row items-center gap-2 rounded-[8px] px-2.5 py-1.5" style={{ backgroundColor: colors.elevated }}>
+          <Text className="text-[15px] font-semibold tracking-wider" style={{ color: colors.text }}>
+            {item.code}
+          </Text>
+          <CopyIcon color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
+          onPress={onUse}
+          disabled={expired || disabled || isApplied}
+          className="rounded-full px-5 py-2.5"
+          style={{
+            backgroundColor: expired || isApplied ? colors.elevated : colors.primary,
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
+          <Text
+            className="text-[13px] font-semibold"
+            style={{ color: expired || isApplied ? colors.textMuted : colors.background }}
+          >
+            {ctaText}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function BottomQuickNav({
+  colors,
+  onNavigate,
+}: {
+  colors: ReturnType<typeof useAppTheme>["colors"];
+  onNavigate: (path: "/(tabs)" | "/(tabs)/cart" | "/(tabs)/wishlist" | "/orders" | "/(tabs)/profile") => void;
+}) {
+  return (
+    <View className="px-4 pb-3 pt-2">
+      <View
+        className="flex-row items-center justify-between rounded-[18px] px-7 py-4"
+        style={{
+          backgroundColor: colors.card,
+          shadowColor: "#000",
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: -2 },
+          elevation: 4,
+        }}
+      >
+        <Pressable onPress={() => onNavigate("/(tabs)")}>
+          <TabIcon routeName="index" color="#D4A04A" />
+        </Pressable>
+        <Pressable onPress={() => onNavigate("/(tabs)/cart")}>
+          <TabIcon routeName="cart" color="#D4A04A" />
+        </Pressable>
+        <Pressable onPress={() => onNavigate("/(tabs)/wishlist")}>
+          <TabIcon routeName="wishlist" color="#D4A04A" />
+        </Pressable>
+        <Pressable onPress={() => onNavigate("/orders")}>
+          <OrdersTabIcon active />
+        </Pressable>
+        <Pressable onPress={() => onNavigate("/(tabs)/profile")}>
+          <TabIcon routeName="profile" color="#D4A04A" />
+        </Pressable>
       </View>
     </View>
   );
@@ -169,7 +301,7 @@ export default function CouponsScreen() {
       id: item.id,
       title: `Enjoy ${display} off`,
       subtitle,
-      dateLine: item.expiry_date ? `Offer valid until ${new Date(item.expiry_date).toLocaleDateString()}` : undefined,
+      dateLine: item.expiry_date ? `Valid until ${new Date(item.expiry_date).toLocaleDateString()}` : undefined,
       code: item.coupon_code,
     };
   }
@@ -286,23 +418,33 @@ export default function CouponsScreen() {
         <Pressable onPress={() => goBackOr(router)} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <BackIcon />
         </Pressable>
-        <Text className="text-center text-[24px] font-medium leading-8" style={{ color: colors.text }}>Coupon</Text>
+        <Text className="text-center text-[20px] font-semibold" style={{ color: colors.text }}>Coupons</Text>
         <Pressable onPress={() => router.push("/help-center")} className="h-8 w-8 items-center justify-center" hitSlop={12}>
           <HelpIcon color={colors.textMuted} />
         </Pressable>
       </View>
 
+      {/* Segmented pill tabs */}
       <View className="mt-5 px-4">
-        <View className="flex-row">
+        <View className="flex-row rounded-full p-1" style={{ backgroundColor: colors.elevated }}>
           {[
             { key: "unused", label: "Unused" },
             { key: "expired", label: "Expired" },
           ].map((t) => {
             const active = tab === (t.key as typeof tab);
             return (
-              <Pressable key={t.key} onPress={() => setTab(t.key as typeof tab)} className="flex-1 items-center pb-3">
-                <Text className="text-[17px]" style={{ color: colors.text }}>{t.label}</Text>
-                {active ? <View className="mt-3 h-[3px] w-full bg-primary" /> : <View className="mt-3 h-[1px] w-full" style={{ backgroundColor: colors.border }} />}
+              <Pressable
+                key={t.key}
+                onPress={() => setTab(t.key as typeof tab)}
+                className="flex-1 items-center rounded-full py-2.5"
+                style={{ backgroundColor: active ? colors.card : "transparent" }}
+              >
+                <Text
+                  className="text-[14px] font-medium"
+                  style={{ color: active ? colors.text : colors.textMuted }}
+                >
+                  {t.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -311,7 +453,7 @@ export default function CouponsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        className="flex-1 px-1"
+        className="flex-1 px-4"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -323,45 +465,50 @@ export default function CouponsScreen() {
         }
       >
         {tab === "unused" ? (
-          <View className="mt-4">
-            <Text className="text-[17px] font-medium" style={{ color: colors.text }}>Available coupons</Text>
-            <Text className="mt-1 text-[14px] leading-6" style={{ color: colors.text }}>Tap any available coupon to add it to checkout.</Text>
-            {hasApplied ? <Text className="mt-2 text-[13px] text-[#0A7A28]">Added to checkout: {appliedCoupon?.code}</Text> : null}
+          <View className="mt-5">
+            <Text className="text-[13px]" style={{ color: colors.textMuted }}>
+              Tap any available coupon to add it to checkout.
+            </Text>
+            {hasApplied ? (
+              <View className="mt-2.5 flex-row items-center gap-1.5 self-start rounded-full px-3 py-1.5" style={{ backgroundColor: "#E8F5E9" }}>
+                <Text className="text-[12.5px] font-medium" style={{ color: "#0A7A28" }}>
+                  ✓ Added to checkout: {appliedCoupon?.code}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
-        <View className="mt-3">
-          {tab === "expired" && !loadingCoupons && expiredCoupons.length === 0 ? (
-            <View className="items-center py-12">
-              <Text className="text-[14px]" style={{ color: colors.textMuted }}>No expired coupons to show.</Text>
-            </View>
+        <View className="mt-4 pb-6">
+          {tab === "unused" && loadingCoupons ? (
+            <>
+              <CouponSkeletonCard />
+              <CouponSkeletonCard />
+            </>
           ) : null}
 
-          {tab === "unused" && loadingCoupons ? (
-            <View className="items-center py-10">
-              <ActivityIndicator color={colors.primary} />
-            </View>
+          {tab === "expired" && !loadingCoupons && expiredCoupons.length === 0 ? (
+            <EmptyState label="No expired coupons to show." colors={colors} />
+          ) : null}
+
+          {tab === "unused" && !loadingCoupons && availableCoupons.length === 0 ? (
+            <EmptyState label="No coupons available right now." colors={colors} />
           ) : null}
 
           {data.map((coupon) => (
-            <View key={coupon.id} className="border-t pt-2" style={{ borderColor: colors.border }}>
-              <CouponCard
-                item={coupon}
-                expired={tab === "expired"}
-                disabled={isApplying}
-                isApplied={Boolean(appliedCoupon && coupon.code.toUpperCase() === appliedCoupon.code.toUpperCase())}
-                onUse={() => {
-                  void applyCouponByCode(coupon.code);
-                }}
-              />
-            </View>
+            <CouponCard
+              key={coupon.id}
+              item={coupon}
+              expired={tab === "expired"}
+              disabled={isApplying}
+              isApplied={Boolean(appliedCoupon && coupon.code.toUpperCase() === appliedCoupon.code.toUpperCase())}
+              onUse={() => {
+                void applyCouponByCode(coupon.code);
+              }}
+            />
           ))}
         </View>
       </ScrollView>
     </View>
   );
 }
-
-
-
-

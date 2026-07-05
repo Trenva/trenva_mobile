@@ -92,6 +92,7 @@ export default function SignupScreen() {
         result?.message ?? "Account created. Please verify your email before proceeding to login.",
         [{ text: "OK", onPress: () => router.replace("/(auth)/login") }],
       );
+      notifySuccess("Account created", "Please verify your email before logging in.");
     } catch (error) {
       notifyError("Signup failed", getApiErrorMessage(error, "Unable to create your account right now."));
     } finally {

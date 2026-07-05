@@ -289,7 +289,7 @@ export default function OrderDetailsScreen() {
     if (!targetItem) return;
     const productId = targetItem.product_ref;
     if (productId === undefined || productId === null) {
-      notifyError("Re-order failed", "Product could not be matched.");
+      notifyError("Buy Again failed", "Product could not be matched.");
       return;
     }
 
@@ -310,7 +310,7 @@ export default function OrderDetailsScreen() {
       notifySuccess("Added to cart", `${targetItem.product_name ?? targetItem.item ?? "Item"} added back to cart.`);
       router.push("/(tabs)/cart");
     } catch {
-      notifyError("Re-order failed", "Unable to add this item to cart.");
+      notifyError("Buy Again failed", "Unable to add this item to cart.");
     } finally {
       setIsReordering(false);
     }
@@ -493,7 +493,7 @@ export default function OrderDetailsScreen() {
                   {isReordering ? (
                     <ActivityIndicator color={colors.background} size="small" />
                   ) : (
-                    <Text className="text-[14px] font-medium" style={{ color: colors.background }}>Re-order</Text>
+                    <Text className="text-[14px] font-medium" style={{ color: colors.background }}>Buy Again</Text>
                   )}
                 </Pressable>
 

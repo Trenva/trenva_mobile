@@ -158,7 +158,7 @@ function OrderItemCard({
             style={{ borderColor: colors.primary }}
             hitSlop={ICON_HIT_SLOP}
           >
-            <Text className="text-[13px] font-medium text-primary">Re-order</Text>
+            <Text className="text-[13px] font-medium text-primary">Buy Again</Text>
           </Pressable>
         </View>
       </View>
